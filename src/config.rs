@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::Path, str::FromStr};
+use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
 
 const CONFIG_FILEPATH: &str = "./rvault_data/storage.yaml";
 const ENV_ROOT_TOKEN: &str = "RVAULT_ROOT_TOKEN";
+const ENV_AUTH_SECRET: &str = "RVAULT_AUTH_SECRET";
 
 fn check_directory_existence(dir_path: &Path) -> Result<()> {
     if !dir_path.exists() {
@@ -28,6 +29,9 @@ struct YamlConfigData {
     storage_dir_path: Option<String>,
     server_ip: Option<String>,
     server_port: Option<u16>,
+    request_timeout_ms: Option<u64>,
+    access_token_exp_seconds: Option<u64>,
+    refresh_token_exp_seconds: Option<u64>,
 }
 
 impl YamlConfigData {
@@ -36,6 +40,9 @@ impl YamlConfigData {
             storage_dir_path: Some("./".to_string()),
             server_ip: Some("0.0.0.0".to_string()),
             server_port: Some(9200),
+            request_timeout_ms: Some(3000),
+            access_token_exp_seconds: Some(24 * 3600),
+            refresh_token_exp_seconds: Some(7 * 24 * 3600),
         }
     }
 
@@ -76,7 +83,7 @@ impl YamlConfigData {
             config_path
         ))?;
         file.write(yaml_content.as_bytes()).context(format!(
-            "Failed to write configuration to file {:?}",
+            "Failed to write configuration to file at {:?}",
             config_path
         ))?;
 
@@ -85,7 +92,8 @@ impl YamlConfigData {
 }
 
 struct EnvConfigData {
-    pub root_token: String,
+    root_token: String,
+    jwt_secret: String,
 }
 
 impl EnvConfigData {
@@ -94,6 +102,7 @@ impl EnvConfigData {
 
         Ok(Self {
             root_token: get_env_var(ENV_ROOT_TOKEN)?,
+            jwt_secret: get_env_var(ENV_AUTH_SECRET)?,
         })
     }
 }
@@ -103,9 +112,13 @@ pub struct Config {
     pub storage_dir_path: String,
     pub server_ip: String,
     pub server_port: u16,
+    pub request_timeout: Duration,
+    pub access_token_exp: Duration,
+    pub refresh_token_exp: Duration,
 
     // Variables from env config
     pub root_token: String,
+    pub jwt_secret: String,
 }
 
 impl Config {
@@ -120,18 +133,34 @@ impl Config {
     }
 
     fn from_configs(yaml_config: YamlConfigData, env_config: EnvConfigData) -> Result<Self> {
+        fn required(variable_name: &str) -> String {
+            format!("{} is required configuration parameter", variable_name)
+        }
+
         let config = Self {
             storage_dir_path: yaml_config
                 .storage_dir_path
-                .context("storage_dir_path is required config parameter")?,
-            server_ip: yaml_config
-                .server_ip
-                .context("server_ip is required config parameter")?,
-            server_port: yaml_config
-                .server_port
-                .context("server_port is required config parameter")?,
+                .context(required("storage_dir_path"))?,
+            server_ip: yaml_config.server_ip.context(required("server_ip"))?,
+            server_port: yaml_config.server_port.context(required("server_port"))?,
+            request_timeout: Duration::from_millis(
+                yaml_config
+                    .request_timeout_ms
+                    .context(required("request_timeout_ms"))?,
+            ),
+            access_token_exp: Duration::from_secs(
+                yaml_config
+                    .access_token_exp_seconds
+                    .context(required("access_token_exp_seconds"))?,
+            ),
+            refresh_token_exp: Duration::from_secs(
+                yaml_config
+                    .refresh_token_exp_seconds
+                    .context(required("refresh_token_exp_seconds"))?,
+            ),
 
             root_token: env_config.root_token,
+            jwt_secret: env_config.jwt_secret,
         };
 
         Ok(config)
