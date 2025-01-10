@@ -5,29 +5,36 @@ use axum::{
 };
 use serde_json::json;
 
+#[derive(Debug)]
 pub enum AuthError {
     InvalidToken,
     InvalidRootToken,
-    WrongCredentials,
     TokenCreation,
-    MissingCredentials,
-    DifferentTokens,
-    TokenExpired,
+    // DifferentTokens,
+    AccessDenied,
+    SetDefaultsFields,
+    InvalidOperation,
 }
 
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            AuthError::InvalidToken => (StatusCode::BAD_REQUEST, "Invalid token"),
-            AuthError::InvalidRootToken => (StatusCode::FORBIDDEN, "Invalid root token"),
-            AuthError::WrongCredentials => (StatusCode::UNAUTHORIZED, "Wrong credentials"),
-            AuthError::MissingCredentials => (StatusCode::BAD_REQUEST, "Missing credentials"),
+            AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token"),
+            AuthError::InvalidRootToken => (StatusCode::UNAUTHORIZED, "Invalid root token"),
             AuthError::TokenCreation => (StatusCode::INTERNAL_SERVER_ERROR, "Token creation error"),
-            AuthError::DifferentTokens => (
+            // AuthError::DifferentTokens => (
+            //     StatusCode::BAD_REQUEST,
+            //     "Passed refresh_token is not related to passed access_token",
+            // ),
+            AuthError::AccessDenied => (StatusCode::FORBIDDEN, "Access denied"),
+            AuthError::SetDefaultsFields => (
                 StatusCode::BAD_REQUEST,
-                "Passed refresh_token is not related to passed access_token",
+                "Do not have permissions to set global defaults fields",
             ),
-            AuthError::TokenExpired => (StatusCode::FORBIDDEN, "Token has expired"),
+            AuthError::InvalidOperation => (
+                StatusCode::FORBIDDEN,
+                "Do not have permissions to do this operation",
+            ),
         };
 
         let body = Json(json!({

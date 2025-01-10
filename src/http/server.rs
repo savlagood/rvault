@@ -1,7 +1,4 @@
-use std::{
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
+use std::net::{Ipv4Addr, SocketAddr};
 
 use anyhow::{Context, Result};
 use axum::{http::header::AUTHORIZATION, Router};
@@ -12,45 +9,30 @@ use tower_http::{
 };
 use tracing::info;
 
-use crate::{config::Config, http::auth};
+use super::{test_handlers, topic};
+use crate::{config::CONFIG, http::auth};
 
-use super::test_handlers;
+pub async fn serve() -> Result<()> {
+    let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, CONFIG.server_port));
 
-#[derive(Clone)]
-pub struct AppContext {
-    pub config: Arc<Config>,
-}
-
-impl AppContext {
-    fn new(config: Config) -> Self {
-        Self {
-            config: Arc::new(config),
-        }
-    }
-}
-
-pub async fn serve(config: Config) -> Result<()> {
-    let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.server_port));
-
-    let app_context = AppContext::new(config);
-
-    let app = create_router(app_context); //
+    let app = create_router();
     let listener = TcpListener::bind(addr).await?;
 
-    info!("Listening on {}", listener.local_addr().unwrap());
+    info!("Listening on {} 🚀", listener.local_addr().unwrap());
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("Failed to run HTTP server")
 }
 
-fn create_router(app_context: AppContext) -> Router {
+pub fn create_router() -> Router {
     Router::new()
         .nest(
             "/api",
             Router::new()
                 .nest("/auth", auth::handlers::router())
-                .nest("/test", test_handlers::router()),
+                .nest("/test", test_handlers::router())
+                .nest("/", topic::handlers::router()),
         )
         .layer((
             SetSensitiveHeadersLayer::new([AUTHORIZATION]),
@@ -60,10 +42,9 @@ fn create_router(app_context: AppContext) -> Router {
                 .on_request(trace::DefaultOnRequest::new().level(tracing::Level::INFO))
                 .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO))
                 .on_failure(()),
-            TimeoutLayer::new(app_context.config.request_timeout),
+            TimeoutLayer::new(CONFIG.request_timeout),
             CatchPanicLayer::new(),
         ))
-        .with_state(app_context)
 }
 
 async fn shutdown_signal() {

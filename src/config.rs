@@ -1,6 +1,10 @@
 use anyhow::{Context, Result};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
+
+pub static CONFIG: Lazy<Config> =
+    Lazy::new(|| Config::setup().expect("Failed to setup configuration"));
 
 const CONFIG_FILEPATH: &str = "./rvault_data/storage.yaml";
 const ENV_ROOT_TOKEN: &str = "RVAULT_ROOT_TOKEN";
@@ -27,7 +31,6 @@ fn get_env_var<T: FromStr>(key: &str) -> Result<T> {
 #[derive(Serialize, Deserialize)]
 struct YamlConfigData {
     storage_dir_path: Option<String>,
-    server_ip: Option<String>,
     server_port: Option<u16>,
     request_timeout_ms: Option<u64>,
     access_token_exp_seconds: Option<u64>,
@@ -38,7 +41,6 @@ impl YamlConfigData {
     fn default() -> Self {
         Self {
             storage_dir_path: Some("./".to_string()),
-            server_ip: Some("0.0.0.0".to_string()),
             server_port: Some(9200),
             request_timeout_ms: Some(3000),
             access_token_exp_seconds: Some(24 * 3600),
@@ -109,8 +111,7 @@ impl EnvConfigData {
 
 pub struct Config {
     // Variables from yaml config
-    pub storage_dir_path: String,
-    pub server_ip: String,
+    pub _storage_dir_path: String,
     pub server_port: u16,
     pub request_timeout: Duration,
     pub access_token_exp: Duration,
@@ -138,10 +139,9 @@ impl Config {
         }
 
         let config = Self {
-            storage_dir_path: yaml_config
+            _storage_dir_path: yaml_config
                 .storage_dir_path
                 .context(required("storage_dir_path"))?,
-            server_ip: yaml_config.server_ip.context(required("server_ip"))?,
             server_port: yaml_config.server_port.context(required("server_port"))?,
             request_timeout: Duration::from_millis(
                 yaml_config

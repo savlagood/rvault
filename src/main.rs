@@ -1,11 +1,12 @@
 mod config;
 mod http;
 
+#[cfg(test)]
+mod tests;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let config = config::Config::setup()?;
-
-    http::server::serve(config).await
+    http::server::serve().await
 }

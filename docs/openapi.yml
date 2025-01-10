@@ -1,0 +1,141 @@
+openapi: 3.0.2
+info:
+  title: 'rvault - secrets storage'
+  version: '0.0.1'
+
+servers:
+  - url: http://localhost:9200/api/
+    description: API server
+
+paths:
+  /auth/admin/token:
+    post:
+      summary: Generate Admin Tokens
+      description: Generates a pair of admin tokens (`access_token` and `refresh_token`) using the provided `root_token`.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                root_token:
+                  type: string
+                  description: The root token for authentication.
+              required:
+                - root_token
+      responses:
+        '200':
+          description: Successfully generated tokens.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokensPair"
+        '401':
+          description: Unauthorized access. Invalid or missing root token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '422':
+          $ref: "#/components/responses/UnprocessableEntity"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
+  
+  /auth/user/token:
+    post:
+      summary: Issue User Tokens
+      description: Issues an `access_token` and a `refresh_token` based on the provided policies.
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  permissions:
+                    type: array
+                    description: List of topic-level permissions.
+                    items:
+                      type: string
+                      enum: [create, read, delete]
+                  secrets:
+                    type: object
+                    description: Object defining secret-level permissions.
+                    additionalProperties:
+                      type: array
+                      description: List of permissions for a specific secret.
+                      items:
+                        type: string
+                        enum: [create, read, update, delete]
+      responses:
+        '200':
+          description: Successfully issued tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokensPair"
+        '400':
+          description: Bad Request - Invalid request payload.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '401':
+          description: Unauthorized - Invalid or missing token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '422':
+          $ref: "#/components/responses/UnprocessableEntity"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
+    
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: jwt
+
+  responses:
+    UnprocessableEntity:
+      description: Unprocessable entity
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InternalServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    TokensPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: The access token.
+        refresh_token:
+          type: string
+          description: The refresh token.
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message.
