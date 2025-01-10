@@ -11,6 +11,8 @@ pub enum AuthError {
     InvalidRootToken,
     TokenCreation,
     // DifferentTokens,
+    DifferentTokens,
+    // jnfjdnfjsdn,
     AccessDenied,
     SetDefaultsFields,
     InvalidOperation,
@@ -22,10 +24,14 @@ impl IntoResponse for AuthError {
             AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token"),
             AuthError::InvalidRootToken => (StatusCode::UNAUTHORIZED, "Invalid root token"),
             AuthError::TokenCreation => (StatusCode::INTERNAL_SERVER_ERROR, "Token creation error"),
-            // AuthError::DifferentTokens => (
+            // AuthError::jnfjdnfjsdn => (
             //     StatusCode::BAD_REQUEST,
             //     "Passed refresh_token is not related to passed access_token",
             // ),
+            AuthError::DifferentTokens => (
+                StatusCode::BAD_REQUEST,
+                "Passed refresh_token is not related to passed access_token",
+            ),
             AuthError::AccessDenied => (StatusCode::FORBIDDEN, "Access denied"),
             AuthError::SetDefaultsFields => (
                 StatusCode::BAD_REQUEST,

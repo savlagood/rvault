@@ -85,3 +85,23 @@ impl RefreshTokenClaims {
         }
     }
 }
+
+// #[async_trait]
+// impl<S> FromRequestParts<S> for RefreshTokenClaims
+// where
+//     S: Send + Sync,
+// {
+//     type Rejection = AuthError;
+
+//     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+//         let TypedHeader(Authorization(bearer)) = parts
+//             .extract::<TypedHeader<Authorization<Bearer>>>()
+//             .await
+//             .map_err(|_| AuthError::InvalidToken)?;
+
+//         let decoding_key = DecodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
+//         let token_data = utils::decode_token::<RefreshTokenClaims>(bearer.token(), &decoding_key)?;
+
+//         Ok(token_data.claims)
+//     }
+// }

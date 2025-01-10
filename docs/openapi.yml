@@ -8,7 +8,7 @@ servers:
     description: API server
 
 paths:
-  /auth/admin/token:
+  /auth/token/issue/admin:
     post:
       summary: Generate Admin Tokens
       description: Generates a pair of admin tokens (`access_token` and `refresh_token`) using the provided `root_token`.
@@ -32,7 +32,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TokensPair"
+                $ref: "#/components/schemas/TokenPair"
         '401':
           description: Unauthorized access. Invalid or missing root token.
           content:
@@ -44,7 +44,7 @@ paths:
         '500':
           $ref: "#/components/responses/InternalServerError"
   
-  /auth/user/token:
+  /auth/token/issue/user:
     post:
       summary: Issue User Tokens
       description: Issues an `access_token` and a `refresh_token` based on the provided policies.
@@ -82,7 +82,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TokensPair"
+                $ref: "#/components/schemas/TokenPair"
         '400':
           description: Bad Request - Invalid request payload.
           content:
@@ -91,6 +91,52 @@ paths:
                 $ref: "#/components/schemas/Error"
         '401':
           description: Unauthorized - Invalid or missing token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '422':
+          $ref: "#/components/responses/UnprocessableEntity"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
+
+  /auth/token/refresh:
+    post:
+      summary: Refresh Tokens
+      description: Issues a new pair of `access_token` and `refresh_token` by validating the provided `refresh_token`. The new tokens will have updated expiration times.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                  description: The access token whose claims will be used again.
+                refresh_token:
+                  type: string
+                  description: The refresh token used for validation.
+              required:
+                - access_token
+                - refresh_token
+      responses:
+        '200':
+          description: Successfully refreshed tokens.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        '400':
+          description: Bad Request - Invalid or expired refresh token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '401':
+          description: Unauthorized - Missing or malformed token.
           content:
             application/json:
               schema:
@@ -123,7 +169,7 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
-    TokensPair:
+    TokenPair:
       type: object
       properties:
         access_token:

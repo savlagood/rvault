@@ -12,8 +12,8 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize)]
-pub struct RootToken {
-    pub root_token: String,
+pub struct TokenRequest {
+    pub token: String,
 }
 
 #[derive(Serialize, Deserialize)]

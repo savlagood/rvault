@@ -51,12 +51,3 @@ pub fn check_topic_access_rights(
     let topic = policy.get_topic(topic_name)?;
     Ok(topic.permissions.contains(&required_permission))
 }
-
-// pub fn check_secret_access_rights(
-//     policy: &Policies,
-//     required_permission: Permission,
-//     topic_name: &str,
-//     secret_name: &str,
-// ) -> Result<bool> {
-//     check_secret_access_rights(policy, required_permission, topic_name, secret_name)
-// }
