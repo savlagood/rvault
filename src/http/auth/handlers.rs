@@ -6,12 +6,14 @@ use jsonwebtoken::{DecodingKey, Validation};
 
 use crate::{
     config::CONFIG,
-    http::auth::{
-        errors::AuthError,
-        models::{TokenPair, TokenRequest},
-        policy::Policies,
-        tokens::{AccessTokenClaims, TokenType},
-        utils,
+    http::{
+        auth::{
+            models::{TokenPair, TokenRequest},
+            policy::Policies,
+            tokens::{AccessTokenClaims, TokenType},
+            utils,
+        },
+        errors::ResponseError,
     },
 };
 
@@ -27,10 +29,10 @@ pub fn router() -> Router {
 
 async fn issue_admin_token(
     Json(payload): Json<TokenRequest>,
-) -> Result<Json<TokenPair>, AuthError> {
+) -> Result<Json<TokenPair>, ResponseError> {
     let root_token = CONFIG.root_token.as_str();
     if payload.token != root_token {
-        return Err(AuthError::InvalidRootToken);
+        return Err(ResponseError::InvalidRootToken);
     }
 
     let policy = utils::get_admin_policy();
@@ -42,7 +44,7 @@ async fn issue_admin_token(
 async fn issue_user_token(
     claims: AccessTokenClaims,
     Json(mut policies): Json<Policies>,
-) -> Result<Json<TokenPair>, AuthError> {
+) -> Result<Json<TokenPair>, ResponseError> {
     match claims.token_type {
         TokenType::Admin => {
             policies.add_defaults();
@@ -50,19 +52,21 @@ async fn issue_user_token(
             match policies.is_default_empty() {
                 Ok(is_empty) => {
                     if !is_empty {
-                        return Err(AuthError::SetDefaultsFields);
+                        return Err(ResponseError::CannotSetDefaultFields);
                     }
                 }
-                Err(_) => return Err(AuthError::InvalidToken),
+                Err(_) => return Err(ResponseError::InvalidToken),
             };
 
             Ok(Json(TokenPair::new(policies, TokenType::User)?))
         }
-        _ => Err(AuthError::AccessDenied),
+        _ => Err(ResponseError::AccessDenied),
     }
 }
 
-async fn refresh_token(Json(token_pair): Json<TokenPair>) -> Result<Json<TokenPair>, AuthError> {
+async fn refresh_token(
+    Json(token_pair): Json<TokenPair>,
+) -> Result<Json<TokenPair>, ResponseError> {
     let decoding_key = DecodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
 
     // Refresh token
@@ -78,12 +82,12 @@ async fn refresh_token(Json(token_pair): Json<TokenPair>) -> Result<Json<TokenPa
         &decoding_key,
         &validator,
     )
-    .map_err(|_| AuthError::InvalidToken)?
+    .map_err(|_| ResponseError::InvalidToken)?
     .claims;
 
     // Check ids
     if refresh_token_claims.access_token_id != access_token_claims.id {
-        return Err(AuthError::DifferentTokens);
+        return Err(ResponseError::DifferentTokens);
     }
 
     // Generate new token pair
@@ -93,7 +97,7 @@ async fn refresh_token(Json(token_pair): Json<TokenPair>) -> Result<Json<TokenPa
     Ok(Json(response_body))
 }
 
-async fn protected(claims: AccessTokenClaims) -> Result<String, AuthError> {
+async fn protected(claims: AccessTokenClaims) -> Result<String, ResponseError> {
     Ok(format!(
         "Welcome to the protected area! {:?}",
         claims.token_type

@@ -3,11 +3,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config::CONFIG,
-    http::auth::{
-        errors::AuthError,
-        policy::Policies,
-        tokens::{AccessTokenClaims, RefreshTokenClaims, TokenType},
-        utils,
+    http::{
+        auth::{
+            policy::Policies,
+            tokens::{AccessTokenClaims, RefreshTokenClaims, TokenType},
+            utils,
+        },
+        errors::ResponseError,
     },
 };
 
@@ -23,7 +25,7 @@ pub struct TokenPair {
 }
 
 impl TokenPair {
-    pub fn new(policy: Policies, token_type: TokenType) -> Result<Self, AuthError> {
+    pub fn new(policy: Policies, token_type: TokenType) -> Result<Self, ResponseError> {
         let jwt_secret = CONFIG.jwt_secret.as_bytes();
         let encoding_key = EncodingKey::from_secret(jwt_secret);
 

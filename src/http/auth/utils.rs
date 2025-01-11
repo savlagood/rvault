@@ -1,7 +1,8 @@
-use crate::http::auth::{
-    errors::AuthError,
-    policy::{Permission, Policies},
+use crate::http::{
+    auth::policy::{Permission, Policies},
+    errors::ResponseError,
 };
+
 use anyhow::Result;
 use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
@@ -24,17 +25,17 @@ pub fn calculate_expiration_time(duration: Duration) -> usize {
 pub fn encode_token<T: Serialize>(
     claims: &T,
     encoding_key: &EncodingKey,
-) -> Result<String, AuthError> {
+) -> Result<String, ResponseError> {
     jsonwebtoken::encode(&Header::default(), &claims, encoding_key)
-        .map_err(|_| AuthError::TokenCreation)
+        .map_err(|_| ResponseError::TokenCreation)
 }
 
 pub fn decode_token<T: DeserializeOwned>(
     token_string: &str,
     decoding_key: &DecodingKey,
-) -> Result<TokenData<T>, AuthError> {
+) -> Result<TokenData<T>, ResponseError> {
     jsonwebtoken::decode(token_string, decoding_key, &Validation::default())
-        .map_err(|_| AuthError::InvalidToken)
+        .map_err(|_| ResponseError::InvalidToken)
 }
 
 pub fn get_admin_policy() -> Policies {

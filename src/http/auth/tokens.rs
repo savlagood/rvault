@@ -9,10 +9,12 @@ use jsonwebtoken::DecodingKey;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::errors::AuthError;
 use crate::{
     config::CONFIG,
-    http::auth::{policy::Policies, utils},
+    http::{
+        auth::{policy::Policies, utils},
+        errors::ResponseError,
+    },
 };
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -51,13 +53,13 @@ impl<S> FromRequestParts<S> for AccessTokenClaims
 where
     S: Send + Sync,
 {
-    type Rejection = AuthError;
+    type Rejection = ResponseError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
-            .map_err(|_| AuthError::InvalidToken)?;
+            .map_err(|_| ResponseError::InvalidToken)?;
 
         let decoding_key = DecodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
         let token_data = utils::decode_token::<AccessTokenClaims>(bearer.token(), &decoding_key)?;
@@ -85,23 +87,3 @@ impl RefreshTokenClaims {
         }
     }
 }
-
-// #[async_trait]
-// impl<S> FromRequestParts<S> for RefreshTokenClaims
-// where
-//     S: Send + Sync,
-// {
-//     type Rejection = AuthError;
-
-//     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-//         let TypedHeader(Authorization(bearer)) = parts
-//             .extract::<TypedHeader<Authorization<Bearer>>>()
-//             .await
-//             .map_err(|_| AuthError::InvalidToken)?;
-
-//         let decoding_key = DecodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
-//         let token_data = utils::decode_token::<RefreshTokenClaims>(bearer.token(), &decoding_key)?;
-
-//         Ok(token_data.claims)
-//     }
-// }

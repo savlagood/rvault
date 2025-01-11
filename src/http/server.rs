@@ -9,7 +9,7 @@ use tower_http::{
 };
 use tracing::info;
 
-use super::topic;
+use super::{storage, topic};
 use crate::{config::CONFIG, http::auth};
 
 pub async fn serve() -> Result<()> {
@@ -31,8 +31,8 @@ pub fn create_router() -> Router {
             "/api",
             Router::new()
                 .nest("/auth", auth::handlers::router())
-                // .nest("/test", test_handlers::router())
-                .nest("/", topic::handlers::router()),
+                .nest("/storage", storage::handlers::router())
+                .nest("/topic", topic::handlers::router()),
         )
         .layer((
             SetSensitiveHeadersLayer::new([AUTHORIZATION]),

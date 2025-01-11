@@ -7,7 +7,10 @@ use axum::{
 };
 
 use super::utils::is_valid_name;
-use crate::http::auth::{errors::AuthError, policy::Permission, tokens::AccessTokenClaims, utils};
+use crate::http::{
+    auth::{policy::Permission, tokens::AccessTokenClaims, utils},
+    errors::ResponseError,
+};
 
 pub fn router() -> Router {
     Router::new().nest(
@@ -19,16 +22,16 @@ pub fn router() -> Router {
 async fn create_topic(
     Path(topic_name): Path<String>,
     claims: AccessTokenClaims,
-) -> Result<Response, AuthError> {
+) -> Result<Response, ResponseError> {
     let policy = claims.policy;
 
     match utils::check_topic_access_rights(&policy, Permission::Create, &topic_name) {
         Ok(is_have_rights) => {
             if !is_have_rights {
-                return Err(AuthError::InvalidOperation);
+                return Err(ResponseError::InvalidOperation);
             }
         }
-        Err(_) => return Err(AuthError::InvalidToken),
+        Err(_) => return Err(ResponseError::InvalidToken),
     }
 
     Ok((
