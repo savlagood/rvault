@@ -6,11 +6,16 @@ use axum::{
     Router,
 };
 
-use super::utils::is_valid_name;
-use crate::http::{
-    auth::{policy::Permission, tokens::AccessTokenClaims, utils},
-    errors::ResponseError,
+use crate::{
+    http::{auth::jwt_tokens::AccessTokenClaims, errors::ResponseError},
+    policies::{check_topic_access_permissions, Permission},
 };
+
+mod utils {
+    pub fn is_valid_name(input: &str) -> bool {
+        input.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+}
 
 pub fn router() -> Router {
     Router::new().nest(
@@ -23,15 +28,10 @@ async fn create_topic(
     Path(topic_name): Path<String>,
     claims: AccessTokenClaims,
 ) -> Result<Response, ResponseError> {
-    let policy = claims.policy;
+    let policies = claims.policy;
 
-    match utils::check_topic_access_rights(&policy, Permission::Create, &topic_name) {
-        Ok(is_have_rights) => {
-            if !is_have_rights {
-                return Err(ResponseError::InvalidOperation);
-            }
-        }
-        Err(_) => return Err(ResponseError::InvalidToken),
+    if !check_topic_access_permissions(&policies, Permission::Create, &topic_name) {
+        return Err(ResponseError::InvalidOperation);
     }
 
     Ok((
@@ -39,7 +39,7 @@ async fn create_topic(
         format!(
             "Topic {} validation status: {}, your type is {:?}",
             topic_name,
-            is_valid_name(&topic_name),
+            utils::is_valid_name(&topic_name),
             claims.token_type,
         ),
     )

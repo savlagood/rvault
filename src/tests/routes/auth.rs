@@ -5,11 +5,17 @@ use reqwest::{Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::config::CONFIG;
-use crate::http::auth::models::TokenPair;
-use crate::http::auth::policy::Policies;
-use crate::http::auth::tokens::{AccessTokenClaims, RefreshTokenClaims, TokenType};
-use crate::http::auth::utils;
+use crate::{
+    config::CONFIG,
+    http::auth::{
+        handlers::utils::get_admin_policy,
+        jwt_tokens::{
+            utils as jwt_utils, AccessTokenClaims, RefreshTokenClaims, TokenPair, TokenType,
+        },
+    },
+    policies::Policies,
+};
+
 use crate::tests::setup::use_app;
 
 #[derive(Serialize, Deserialize)]
@@ -21,7 +27,7 @@ struct ErrorMessage {
 use pretty_assertions::assert_eq;
 
 static ADMIN_ACCESS_TOKEN: Lazy<String> = Lazy::new(|| {
-    let admin_policies = utils::get_admin_policy();
+    let admin_policies = get_admin_policy();
     let access_token = TokenPair::new(admin_policies, TokenType::Admin)
         .expect("Error during creating admin token")
         .access_token;
@@ -31,7 +37,7 @@ static ADMIN_ACCESS_TOKEN: Lazy<String> = Lazy::new(|| {
 
 fn extract_token_claims<T: DeserializeOwned>(token: String) -> T {
     let decoding_key = DecodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
-    let token_data = utils::decode_token::<T>(&token, &decoding_key).expect("Invalid token");
+    let token_data = jwt_utils::decode_token::<T>(&token, &decoding_key).expect("Invalid token");
 
     token_data.claims
 }
@@ -129,7 +135,7 @@ mod issue_admin_token_tests {
 
             // Body
             let token_pair = extract_token_pair_from_response(response).await;
-            validate_token_pair(token_pair, TokenType::Admin, utils::get_admin_policy());
+            validate_token_pair(token_pair, TokenType::Admin, get_admin_policy());
         });
     }
 
@@ -309,18 +315,18 @@ mod refresh_token_tests {
         let encoding_key = EncodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
 
         let mut access_token_claims = AccessTokenClaims::new(
-            utils::get_admin_policy(),
-            crate::http::auth::tokens::TokenType::Admin,
+            get_admin_policy(),
+            crate::http::auth::jwt_tokens::TokenType::Admin,
             CONFIG.access_token_exp,
         );
         access_token_claims.exp = access_exp;
-        let access_token = utils::encode_token(&access_token_claims, &encoding_key)
+        let access_token = jwt_utils::encode_token(&access_token_claims, &encoding_key)
             .expect("Error during encoding access token");
 
         let mut refresh_token_claims =
             RefreshTokenClaims::new(access_token_claims.id, CONFIG.refresh_token_exp);
         refresh_token_claims.exp = refresh_exp;
-        let refresh_token = utils::encode_token(&refresh_token_claims, &encoding_key)
+        let refresh_token = jwt_utils::encode_token(&refresh_token_claims, &encoding_key)
             .expect("Error during encoding refresh token");
 
         (access_token, refresh_token)
@@ -340,8 +346,8 @@ mod refresh_token_tests {
     #[test]
     fn test_access_token_still_valid() {
         let request_body = make_token_pair_into_request_body(
-            utils::calculate_expiration_time(CONFIG.access_token_exp),
-            utils::calculate_expiration_time(CONFIG.refresh_token_exp),
+            jwt_utils::calculate_expiration_time(CONFIG.access_token_exp),
+            jwt_utils::calculate_expiration_time(CONFIG.refresh_token_exp),
         );
 
         use_app(async move {
@@ -353,7 +359,7 @@ mod refresh_token_tests {
 
             // Body
             let token_pair = extract_token_pair_from_response(response).await;
-            validate_token_pair(token_pair, TokenType::Admin, utils::get_admin_policy());
+            validate_token_pair(token_pair, TokenType::Admin, get_admin_policy());
         });
     }
 
@@ -361,7 +367,7 @@ mod refresh_token_tests {
     fn test_access_token_expired() {
         let request_body = make_token_pair_into_request_body(
             0,
-            utils::calculate_expiration_time(CONFIG.refresh_token_exp),
+            jwt_utils::calculate_expiration_time(CONFIG.refresh_token_exp),
         );
 
         use_app(async move {
@@ -373,7 +379,7 @@ mod refresh_token_tests {
 
             // Body
             let token_pair = extract_token_pair_from_response(response).await;
-            validate_token_pair(token_pair, TokenType::Admin, utils::get_admin_policy());
+            validate_token_pair(token_pair, TokenType::Admin, get_admin_policy());
         });
     }
 
@@ -399,8 +405,8 @@ mod refresh_token_tests {
     #[test]
     fn test_access_token_not_linked_to_refresh_token() {
         let (_access_token, refresh_token) = make_token_pair(
-            utils::calculate_expiration_time(CONFIG.access_token_exp),
-            utils::calculate_expiration_time(CONFIG.refresh_token_exp),
+            jwt_utils::calculate_expiration_time(CONFIG.access_token_exp),
+            jwt_utils::calculate_expiration_time(CONFIG.refresh_token_exp),
         );
 
         let request_body = serde_json::json!(

@@ -12,6 +12,10 @@ use tracing::info;
 use super::{storage, topic};
 use crate::{config::CONFIG, http::auth};
 
+/// Starts the HTTP server and begins serving requests.
+///
+/// # Errors
+/// Returns an error if the server fails to bind to the specified address or encounters issues during execution.
 pub async fn serve() -> Result<()> {
     let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, CONFIG.server_port));
 
@@ -25,6 +29,10 @@ pub async fn serve() -> Result<()> {
         .context("Failed to run HTTP server")
 }
 
+/// Creates the main application router, setting up API routes and middleware layers.
+///
+/// # Returns
+/// A configured [`Router`] instance containing all routes and middleware layers.
 pub fn create_router() -> Router {
     Router::new()
         .nest(
@@ -47,6 +55,7 @@ pub fn create_router() -> Router {
         ))
 }
 
+/// Waits for a shutdown signal (Ctrl+C or terminate signal) to gracefully terminate the server.
 async fn shutdown_signal() {
     use tokio::signal;
 

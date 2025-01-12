@@ -1,8 +1,10 @@
+use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
+
 use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
 
+/// Static configuration instance initialized during runtime setup.
 pub static CONFIG: Lazy<Config> =
     Lazy::new(|| Config::setup().expect("Failed to setup configuration"));
 
@@ -10,15 +12,25 @@ const CONFIG_FILEPATH: &str = "./rvault_data/storage.yaml";
 const ENV_ROOT_TOKEN: &str = "RVAULT_ROOT_TOKEN";
 const ENV_AUTH_SECRET: &str = "RVAULT_AUTH_SECRET";
 
-fn check_directory_existence(dir_path: &Path) -> Result<()> {
-    if !dir_path.exists() {
-        fs::create_dir_all(dir_path)
-            .context(format!("Failed to create directory {:?}", dir_path,))?;
+/// Ensures the existence of a directory, creating it if necessary.
+///
+/// # Arguments
+/// * `path` - The path of the directory to check or create.
+fn check_directory_existence(path: &Path) -> Result<()> {
+    if !path.exists() {
+        fs::create_dir_all(path).context(format!("Failed to create directory {:?}", path,))?;
     }
 
     Ok(())
 }
 
+/// Retrieves and parses an environment variable.
+///
+/// # Arguments
+/// * `key` - The name of the environment variable.
+///
+/// # Returns
+/// The parsed value of the environment variable.
 fn get_env_var<T: FromStr>(key: &str) -> Result<T> {
     let value = std::env::var(key).context(format!("Environment vaiable {:?} is required", key))?;
 
@@ -28,6 +40,7 @@ fn get_env_var<T: FromStr>(key: &str) -> Result<T> {
     Ok(result)
 }
 
+/// Struct representing YAML configuration data.
 #[derive(Serialize, Deserialize)]
 struct YamlConfigData {
     storage_dir_path: Option<String>,
@@ -38,6 +51,7 @@ struct YamlConfigData {
 }
 
 impl YamlConfigData {
+    /// Returns the default YAML configuration.
     fn default() -> Self {
         Self {
             storage_dir_path: Some("./".to_string()),
@@ -48,6 +62,7 @@ impl YamlConfigData {
         }
     }
 
+    /// Loads configuration from the given path or creates a default configuration if none exists.
     fn load(config_path: &Path) -> Result<Self> {
         let config_dir = config_path.parent().unwrap();
 
@@ -70,6 +85,7 @@ impl YamlConfigData {
         Ok(config_data)
     }
 
+    /// Saves the current configuration to the file by the given path.
     fn save(&self, config_path: &Path) -> Result<()> {
         let config_dir = config_path.parent().unwrap();
 
@@ -93,12 +109,14 @@ impl YamlConfigData {
     }
 }
 
+/// Struct representing environment variable configuration data.
 struct EnvConfigData {
     root_token: String,
     jwt_secret: String,
 }
 
 impl EnvConfigData {
+    /// Loads configuration data from environment variables.
     fn load_from_env() -> Result<Self> {
         dotenv::dotenv().context("Failed to load values from .env file")?;
 
@@ -109,6 +127,7 @@ impl EnvConfigData {
     }
 }
 
+/// Main configuration struct combining YAML and environment configurations.
 pub struct Config {
     // Variables from yaml config
     pub _storage_dir_path: String,
@@ -123,6 +142,7 @@ pub struct Config {
 }
 
 impl Config {
+    /// Initializes the configuration by loading YAML and environment data.
     pub fn setup() -> Result<Self> {
         let yaml_config_path = Path::new(CONFIG_FILEPATH);
 
@@ -133,6 +153,7 @@ impl Config {
         Ok(config)
     }
 
+    /// Combines YAML and environment configurations into a `Config` instance.
     fn from_configs(yaml_config: YamlConfigData, env_config: EnvConfigData) -> Result<Self> {
         fn required(variable_name: &str) -> String {
             format!("{} is required configuration parameter", variable_name)
