@@ -1,4 +1,4 @@
-use super::{storage, topic};
+use super::storage;
 use crate::{
     http::auth,
     state::{AppState, SharedState},
@@ -45,8 +45,7 @@ pub fn create_router(app_state: SharedState) -> Router {
             "/api",
             Router::new()
                 .nest("/auth", auth::handlers::router(app_state.clone()))
-                .nest("/storage", storage::handlers::router(app_state.clone()))
-                .nest("/topic", topic::handlers::router()),
+                .nest("/storage", storage::handlers::router(app_state.clone())),
         )
         .layer((
             SetSensitiveHeadersLayer::new([AUTHORIZATION]),
