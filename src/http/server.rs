@@ -1,7 +1,11 @@
-use std::net::{Ipv4Addr, SocketAddr};
-
+use super::{storage, topic};
+use crate::{
+    http::auth,
+    state::{AppState, SharedState},
+};
 use anyhow::{Context, Result};
 use axum::{http::header::AUTHORIZATION, Router};
+use std::net::{Ipv4Addr, SocketAddr};
 use tokio::net::TcpListener;
 use tower_http::{
     catch_panic::CatchPanicLayer, compression::CompressionLayer,
@@ -9,17 +13,17 @@ use tower_http::{
 };
 use tracing::info;
 
-use super::{storage, topic};
-use crate::{config::CONFIG, http::auth};
-
 /// Starts the HTTP server and begins serving requests.
 ///
 /// # Errors
 /// Returns an error if the server fails to bind to the specified address or encounters issues during execution.
 pub async fn serve() -> Result<()> {
-    let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, CONFIG.server_port));
+    let app_state = AppState::new()?;
+    let config = app_state.get_config();
 
-    let app = create_router();
+    let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.server_port));
+
+    let app = create_router(app_state);
     let listener = TcpListener::bind(addr).await?;
 
     info!("Listening on {} 🚀", listener.local_addr().unwrap());
@@ -33,13 +37,15 @@ pub async fn serve() -> Result<()> {
 ///
 /// # Returns
 /// A configured [`Router`] instance containing all routes and middleware layers.
-pub fn create_router() -> Router {
+pub fn create_router(app_state: SharedState) -> Router {
+    let config = app_state.get_config();
+
     Router::new()
         .nest(
             "/api",
             Router::new()
-                .nest("/auth", auth::handlers::router())
-                .nest("/storage", storage::handlers::router())
+                .nest("/auth", auth::handlers::router(app_state.clone()))
+                .nest("/storage", storage::handlers::router(app_state.clone()))
                 .nest("/topic", topic::handlers::router()),
         )
         .layer((
@@ -50,7 +56,7 @@ pub fn create_router() -> Router {
                 .on_request(trace::DefaultOnRequest::new().level(tracing::Level::INFO))
                 .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO))
                 .on_failure(()),
-            TimeoutLayer::new(CONFIG.request_timeout),
+            TimeoutLayer::new(config.request_timeout),
             CatchPanicLayer::new(),
         ))
 }

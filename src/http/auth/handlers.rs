@@ -1,11 +1,4 @@
-use axum::{
-    routing::{get, post},
-    Json, Router,
-};
-use jsonwebtoken::{DecodingKey, Validation};
-
 use crate::{
-    config::CONFIG,
     http::{
         auth::jwt_tokens::{
             utils::decode_token, AccessTokenClaims, RefreshTokenClaims, TokenPair, TokenType,
@@ -13,7 +6,14 @@ use crate::{
         errors::ResponseError,
     },
     policies::Policies,
+    state::SharedState,
 };
+use axum::{
+    extract::State,
+    routing::{get, post},
+    Json, Router,
+};
+use jsonwebtoken::{DecodingKey, Validation};
 
 /// Utility functions for token-related operations
 pub mod utils {
@@ -53,25 +53,29 @@ mod models {
 }
 
 /// Defines the router for token management endpoints.
-pub fn router() -> Router {
+pub fn router(app_state: SharedState) -> Router {
     Router::new()
         .route("/token/issue/admin", post(issue_admin_token))
         .route("/token/issue/user", post(issue_user_token))
         .route("/token/refresh", post(refresh_token))
         .route("/protected", get(protected))
+        .with_state(app_state)
 }
 
 /// Issues an admin token if the provided root token is valid.
 async fn issue_admin_token(
+    State(state): State<SharedState>,
     Json(payload): Json<models::TokenRequest>,
 ) -> Result<Json<TokenPair>, ResponseError> {
-    let root_token = CONFIG.root_token.as_str();
+    let config = state.get_config();
+    let root_token = config.root_token.as_str();
+
     if payload.token != root_token {
         return Err(ResponseError::InvalidRootToken);
     }
 
     let policies = utils::get_admin_policy();
-    let response_body = TokenPair::new(policies, TokenType::Admin)?;
+    let response_body = TokenPair::new(config, policies, TokenType::Admin)?;
 
     Ok(Json(response_body))
 }
@@ -79,6 +83,7 @@ async fn issue_admin_token(
 /// Issues a user token if the provided claims belong to an admin.
 async fn issue_user_token(
     claims: AccessTokenClaims,
+    State(state): State<SharedState>,
     Json(mut policies): Json<Policies>,
 ) -> Result<Json<TokenPair>, ResponseError> {
     if claims.token_type != TokenType::Admin {
@@ -94,14 +99,18 @@ async fn issue_user_token(
         return Err(ResponseError::CannotSetDefaultFields);
     }
 
-    Ok(Json(TokenPair::new(policies, TokenType::User)?))
+    let config = state.get_config();
+    Ok(Json(TokenPair::new(config, policies, TokenType::User)?))
 }
 
 /// Refreshes a token pair, ensuring the validity and consistency of the provided tokens.
 async fn refresh_token(
+    State(state): State<SharedState>,
     Json(token_pair): Json<TokenPair>,
 ) -> Result<Json<TokenPair>, ResponseError> {
-    let decoding_key = DecodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
+    let config = state.get_config();
+
+    let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
 
     // Refresh token
     let refresh_token_claims =
@@ -126,7 +135,7 @@ async fn refresh_token(
 
     // Generate new token pair
     let polies = utils::get_admin_policy();
-    let response_body = TokenPair::new(polies, TokenType::Admin)?;
+    let response_body = TokenPair::new(config, polies, TokenType::Admin)?;
 
     Ok(Json(response_body))
 }

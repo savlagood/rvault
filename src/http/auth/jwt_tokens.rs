@@ -1,5 +1,4 @@
-use std::time::Duration;
-
+use crate::{config::Config, http::errors::ResponseError, policies::Policies, state::AppState};
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts, RequestPartsExt};
 use axum_extra::{
     headers::{authorization::Bearer, Authorization},
@@ -7,9 +6,8 @@ use axum_extra::{
 };
 use jsonwebtoken::{DecodingKey, EncodingKey};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use uuid::Uuid;
-
-use crate::{config::CONFIG, http::errors::ResponseError, policies::Policies};
 
 /// Utility functions for working with JWT tokens.
 pub mod utils {
@@ -63,16 +61,20 @@ pub struct TokenPair {
 
 impl TokenPair {
     /// Creates a new `TokenPair` with the specified policies and token type.
-    pub fn new(policies: Policies, token_type: TokenType) -> Result<Self, ResponseError> {
-        let jwt_secret = CONFIG.jwt_secret.as_bytes();
+    pub fn new(
+        config: &Config,
+        policies: Policies,
+        token_type: TokenType,
+    ) -> Result<Self, ResponseError> {
+        let jwt_secret = config.jwt_secret.as_bytes();
         let encoding_key = EncodingKey::from_secret(jwt_secret);
 
         let access_token_claims =
-            AccessTokenClaims::new(policies, token_type, CONFIG.access_token_exp);
+            AccessTokenClaims::new(policies, token_type, config.access_token_exp);
         let access_token = utils::encode_token(&access_token_claims, &encoding_key)?;
 
         let refresh_token_claims =
-            RefreshTokenClaims::new(access_token_claims.id, CONFIG.refresh_token_exp);
+            RefreshTokenClaims::new(access_token_claims.id, config.refresh_token_exp);
         let refresh_token = utils::encode_token(&refresh_token_claims, &encoding_key)?;
 
         Ok(Self {
@@ -110,18 +112,20 @@ impl AccessTokenClaims {
 #[async_trait]
 impl<S> FromRequestParts<S> for AccessTokenClaims
 where
-    S: Send + Sync,
+    S: Send + Sync + AsRef<AppState>,
 {
     type Rejection = ResponseError;
 
     /// Extracts `AccessTokenClaims` from the request's authorization header.
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
             .map_err(|_| ResponseError::InvalidToken)?;
 
-        let decoding_key = DecodingKey::from_secret(CONFIG.jwt_secret.as_bytes());
+        let config = state.as_ref().get_config();
+
+        let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
         let token_data = utils::decode_token::<AccessTokenClaims>(bearer.token(), &decoding_key)?;
 
         Ok(token_data.claims)

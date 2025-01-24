@@ -1,12 +1,6 @@
-use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
-
 use anyhow::{Context, Result};
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-
-/// Static configuration instance initialized during runtime setup.
-pub static CONFIG: Lazy<Config> =
-    Lazy::new(|| Config::setup().expect("Failed to setup configuration"));
+use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
 
 const CONFIG_FILEPATH: &str = "./rvault_data/storage.yaml";
 const ENV_ROOT_TOKEN: &str = "RVAULT_ROOT_TOKEN";
@@ -127,6 +121,7 @@ impl EnvConfigData {
     }
 }
 
+#[derive(Clone, Debug)]
 /// Main configuration struct combining YAML and environment configurations.
 pub struct Config {
     // Variables from yaml config

@@ -1,6 +1,7 @@
 mod config;
 mod http;
 mod policies;
+mod state;
 
 #[cfg(test)]
 mod tests;

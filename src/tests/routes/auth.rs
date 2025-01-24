@@ -5,8 +5,8 @@ use reqwest::{Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+use crate::config::Config;
 use crate::{
-    config::CONFIG,
     http::auth::{
         handlers::utils::get_admin_policy,
         jwt_tokens::{
@@ -18,6 +18,8 @@ use crate::{
 
 use crate::tests::setup::use_app;
 
+static CONFIG: Lazy<Config> = Lazy::new(|| crate::config::Config::setup().expect("Failed to setup config"));
+
 #[derive(Serialize, Deserialize)]
 struct ErrorMessage {
     error: String,
@@ -28,7 +30,8 @@ use pretty_assertions::assert_eq;
 
 static ADMIN_ACCESS_TOKEN: Lazy<String> = Lazy::new(|| {
     let admin_policies = get_admin_policy();
-    let access_token = TokenPair::new(admin_policies, TokenType::Admin)
+
+    let access_token = TokenPair::new(&CONFIG, admin_policies, TokenType::Admin)
         .expect("Error during creating admin token")
         .access_token;
 
