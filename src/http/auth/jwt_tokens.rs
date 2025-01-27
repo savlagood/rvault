@@ -11,11 +11,10 @@ use uuid::Uuid;
 
 /// Utility functions for working with JWT tokens.
 pub mod utils {
-    use std::time::Duration;
-
     use chrono::Utc;
     use jsonwebtoken::{DecodingKey, EncodingKey, Header, TokenData, Validation};
     use serde::{de::DeserializeOwned, Serialize};
+    use std::time::Duration;
 
     use crate::http::errors::ResponseError;
 

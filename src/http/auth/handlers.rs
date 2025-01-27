@@ -6,7 +6,7 @@ use crate::{
         errors::ResponseError,
     },
     policies::Policies,
-    state::SharedState,
+    state::AppState,
 };
 use axum::{
     extract::State,
@@ -27,7 +27,7 @@ pub mod utils {
     ];
 
     /// Creates an admin policy with full permissions.
-    pub fn get_admin_policy() -> Policies {
+    pub fn get_admin_policies() -> Policies {
         let mut policies = Policies::new();
 
         let default_topic = policies
@@ -53,7 +53,7 @@ mod models {
 }
 
 /// Defines the router for token management endpoints.
-pub fn router(app_state: SharedState) -> Router {
+pub fn create_router(app_state: AppState) -> Router {
     Router::new()
         .route("/token/issue/admin", post(issue_admin_token))
         .route("/token/issue/user", post(issue_user_token))
@@ -64,7 +64,7 @@ pub fn router(app_state: SharedState) -> Router {
 
 /// Issues an admin token if the provided root token is valid.
 async fn issue_admin_token(
-    State(state): State<SharedState>,
+    State(state): State<AppState>,
     Json(payload): Json<models::TokenRequest>,
 ) -> Result<Json<TokenPair>, ResponseError> {
     let config = state.get_config();
@@ -74,7 +74,7 @@ async fn issue_admin_token(
         return Err(ResponseError::InvalidRootToken);
     }
 
-    let policies = utils::get_admin_policy();
+    let policies = utils::get_admin_policies();
     let response_body = TokenPair::new(config, policies, TokenType::Admin)?;
 
     Ok(Json(response_body))
@@ -83,7 +83,7 @@ async fn issue_admin_token(
 /// Issues a user token if the provided claims belong to an admin.
 async fn issue_user_token(
     claims: AccessTokenClaims,
-    State(state): State<SharedState>,
+    State(state): State<AppState>,
     Json(mut policies): Json<Policies>,
 ) -> Result<Json<TokenPair>, ResponseError> {
     if claims.token_type != TokenType::Admin {
@@ -105,7 +105,7 @@ async fn issue_user_token(
 
 /// Refreshes a token pair, ensuring the validity and consistency of the provided tokens.
 async fn refresh_token(
-    State(state): State<SharedState>,
+    State(state): State<AppState>,
     Json(token_pair): Json<TokenPair>,
 ) -> Result<Json<TokenPair>, ResponseError> {
     let config = state.get_config();
@@ -134,7 +134,7 @@ async fn refresh_token(
     }
 
     // Generate new token pair
-    let polies = utils::get_admin_policy();
+    let polies = utils::get_admin_policies();
     let response_body = TokenPair::new(config, polies, TokenType::Admin)?;
 
     Ok(Json(response_body))

@@ -3,6 +3,8 @@ mod http;
 mod policies;
 mod state;
 
+use anyhow::Context;
+
 #[cfg(test)]
 mod tests;
 
@@ -10,5 +12,6 @@ mod tests;
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    http::server::serve().await
+    let app_state = state::AppState::setup().context("Failed to setup AppState")?;
+    http::server::serve(app_state).await
 }

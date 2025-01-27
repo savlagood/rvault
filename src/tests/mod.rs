@@ -1,2 +1,6 @@
+mod assertions;
+mod jwt_utils;
 mod routes;
-mod setup;
+mod server;
+
+mod auth_tests;

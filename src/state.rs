@@ -2,25 +2,29 @@ use crate::config::Config;
 use anyhow::{Context, Result};
 use std::sync::Arc;
 
-pub type SharedState = Arc<AppState>;
-
 #[derive(Clone)]
-pub struct AppState {
-    config: Arc<Config>,
-}
+pub struct AppState(Arc<StateData>);
 
 impl AppState {
-    pub fn new() -> Result<SharedState> {
-        let config = Config::setup().context("Failed to setup configuration")?;
-        let config = Arc::new(config);
+    pub fn setup() -> Result<Self> {
+        let config = Arc::new(Config::setup().context("Failed to setup configuration")?);
 
-        let app_state = Self { config };
-        let app_state = Arc::new(app_state);
+        let state_data = Arc::new(StateData { config });
 
-        Ok(app_state)
+        Ok(Self(state_data))
     }
 
     pub fn get_config(&self) -> &Config {
-        &self.config
+        &self.0.config
     }
+}
+
+impl AsRef<AppState> for AppState {
+    fn as_ref(&self) -> &AppState {
+        self
+    }
+}
+
+struct StateData {
+    config: Arc<Config>,
 }

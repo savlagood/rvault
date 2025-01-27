@@ -1,8 +1,5 @@
 use super::storage;
-use crate::{
-    http::auth,
-    state::{AppState, SharedState},
-};
+use crate::{http::auth, state::AppState};
 use anyhow::{Context, Result};
 use axum::{http::header::AUTHORIZATION, Router};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -13,39 +10,34 @@ use tower_http::{
 };
 use tracing::info;
 
-/// Starts the HTTP server and begins serving requests.
-///
-/// # Errors
-/// Returns an error if the server fails to bind to the specified address or encounters issues during execution.
-pub async fn serve() -> Result<()> {
-    let app_state = AppState::new()?;
+pub async fn serve(app_state: AppState) -> Result<()> {
     let config = app_state.get_config();
 
-    let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.server_port));
+    let app = create_router(app_state.clone());
 
-    let app = create_router(app_state);
+    let addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, config.server_port));
     let listener = TcpListener::bind(addr).await?;
 
     info!("Listening on {} 🚀", listener.local_addr().unwrap());
+
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("Failed to run HTTP server")
 }
 
-/// Creates the main application router, setting up API routes and middleware layers.
-///
-/// # Returns
-/// A configured [`Router`] instance containing all routes and middleware layers.
-pub fn create_router(app_state: SharedState) -> Router {
+pub fn create_router(app_state: AppState) -> Router {
     let config = app_state.get_config();
 
     Router::new()
         .nest(
             "/api",
             Router::new()
-                .nest("/auth", auth::handlers::router(app_state.clone()))
-                .nest("/storage", storage::handlers::router(app_state.clone())),
+                .nest("/auth", auth::handlers::create_router(app_state.clone()))
+                .nest(
+                    "/storage",
+                    storage::handlers::create_router(app_state.clone()),
+                ),
         )
         .layer((
             SetSensitiveHeadersLayer::new([AUTHORIZATION]),

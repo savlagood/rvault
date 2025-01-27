@@ -22,7 +22,7 @@ pub enum Permission {
 ///
 /// # Returns
 /// `true` if the required permission is granted for the topic, otherwise `false`.
-pub fn check_topic_access_permissions(
+pub fn _check_topic_access_permissions(
     policies: &Policies,
     required_permission: Permission,
     topic_name: &str,
