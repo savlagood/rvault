@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 struct ErrorMessage {
-    error: String,
+    message: String,
 }
 
 pub async fn assert_response_contains_error_message(response: Response) {
@@ -13,7 +13,7 @@ pub async fn assert_response_contains_error_message(response: Response) {
         .expect("Error during parsing error message");
 
     assert!(
-        !response_body.error.is_empty(),
+        !response_body.message.is_empty(),
         "Response must contain error message"
     );
 }

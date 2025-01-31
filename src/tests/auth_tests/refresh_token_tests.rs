@@ -1,4 +1,4 @@
-use crate::http::auth::jwt_tokens::{utils::calculate_expiration_time, TokenPair};
+use crate::http::jwt_tokens::{self, TokenPair};
 use crate::tests::{
     assertions, jwt_utils, routes,
     server::{use_app, ClientWithServer, CONFIG},
@@ -11,8 +11,8 @@ use pretty_assertions::assert_eq;
 #[test]
 fn test_access_and_refresh_tokens_still_valid() {
     let token_pair = jwt_utils::make_admin_token_pair_with_specified_access_refresh_exp(
-        calculate_expiration_time(CONFIG.access_token_exp),
-        calculate_expiration_time(CONFIG.refresh_token_exp),
+        jwt_tokens::calculate_expiration_time(CONFIG.access_token_exp),
+        jwt_tokens::calculate_expiration_time(CONFIG.refresh_token_exp),
     );
     let request_body = serde_json::to_value(&token_pair).expect("Failed to serialize token pair");
 
@@ -35,7 +35,7 @@ fn test_access_and_refresh_tokens_still_valid() {
 fn test_access_token_expired() {
     let token_pair = jwt_utils::make_admin_token_pair_with_specified_access_refresh_exp(
         0,
-        calculate_expiration_time(CONFIG.refresh_token_exp),
+        jwt_tokens::calculate_expiration_time(CONFIG.refresh_token_exp),
     );
     let request_body = serde_json::to_value(&token_pair).expect("Failed to serialize token pair");
 
@@ -47,7 +47,6 @@ fn test_access_token_expired() {
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
-        println!("HHHH123");
         assertions::token_pair::assert_response_contains_valid_refreshed_token_pair(
             response, token_pair,
         )

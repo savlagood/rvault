@@ -1,19 +1,16 @@
 use crate::{
     http::{
-        auth::jwt_tokens::{
-            utils::decode_token, AccessTokenClaims, RefreshTokenClaims, TokenPair, TokenType,
-        },
         errors::ResponseError,
+        jwt_tokens::{
+            decode_token_into_claims, decode_token_into_claims_without_exp_checking,
+            AccessTokenClaims, RefreshTokenClaims, TokenPair, TokenType,
+        },
     },
     policies::Policies,
     state::AppState,
 };
-use axum::{
-    extract::State,
-    routing::{get, post},
-    Json, Router,
-};
-use jsonwebtoken::{DecodingKey, Validation};
+use axum::{extract::State, routing::post, Json, Router};
+use jsonwebtoken::DecodingKey;
 
 /// Utility functions for token-related operations
 pub mod utils {
@@ -58,7 +55,6 @@ pub fn create_router(app_state: AppState) -> Router {
         .route("/token/issue/admin", post(issue_admin_token))
         .route("/token/issue/user", post(issue_user_token))
         .route("/token/refresh", post(refresh_token))
-        .route("/protected", get(protected))
         .with_state(app_state)
 }
 
@@ -71,7 +67,7 @@ async fn issue_admin_token(
     let root_token = config.root_token.as_str();
 
     if payload.token != root_token {
-        return Err(ResponseError::InvalidRootToken);
+        return Err(ResponseError::AccessDenied);
     }
 
     let policies = utils::get_admin_policies();
@@ -86,7 +82,7 @@ async fn issue_user_token(
     State(state): State<AppState>,
     Json(mut policies): Json<Policies>,
 ) -> Result<Json<TokenPair>, ResponseError> {
-    if claims.token_type != TokenType::Admin {
+    if !matches!(claims.token_type, TokenType::Admin) {
         return Err(ResponseError::AccessDenied);
     }
 
@@ -109,23 +105,15 @@ async fn refresh_token(
     Json(token_pair): Json<TokenPair>,
 ) -> Result<Json<TokenPair>, ResponseError> {
     let config = state.get_config();
-
     let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
 
-    // Refresh token
     let refresh_token_claims =
-        decode_token::<RefreshTokenClaims>(&token_pair.refresh_token, &decoding_key)?.claims;
-
-    // Access token
-    let mut validator = Validation::new(jsonwebtoken::Algorithm::HS256);
-    validator.validate_exp = false;
-
-    let access_token_claims = jsonwebtoken::decode::<AccessTokenClaims>(
+        decode_token_into_claims::<RefreshTokenClaims>(&token_pair.refresh_token, &decoding_key)?
+            .claims;
+    let access_token_claims = decode_token_into_claims_without_exp_checking::<AccessTokenClaims>(
         &token_pair.access_token,
         &decoding_key,
-        &validator,
-    )
-    .map_err(|_| ResponseError::InvalidToken)?
+    )?
     .claims;
 
     // Check ids
@@ -138,11 +126,4 @@ async fn refresh_token(
     let response_body = TokenPair::new(config, polies, TokenType::Admin)?;
 
     Ok(Json(response_body))
-}
-
-async fn protected(claims: AccessTokenClaims) -> Result<String, ResponseError> {
-    Ok(format!(
-        "Welcome to the protected area! {:?}",
-        claims.token_type
-    ))
 }

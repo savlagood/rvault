@@ -145,6 +145,48 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         '500':
           $ref: "#/components/responses/InternalServerError"
+
+  /storage/init:
+    post:
+      description: Initialize Storage
+      tags:
+        - Storage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                threshold:
+                  type: integer
+                  description: Minimum number of key shards required to unseal storage.
+                total_keys:
+                  type: integer
+                  description: Total number of key shards.
+      responses:
+        '200':
+          description: Initialization completed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SharedKeys"
+        '400':
+          description: Bad request - storage is already initialized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '401':
+          description: Unauthorized - Missing or malformed token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '422':
+          $ref: "#/components/responses/UnprocessableEntity"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
     
 components:
   securitySchemes:
@@ -178,6 +220,15 @@ components:
         refresh_token:
           type: string
           description: The refresh token.
+    
+    SharedKeys:
+      type: object
+      properties:
+        shares:
+          type: array
+          description: The distributed key shards.
+          items:
+            type: string
 
     Error:
       type: object

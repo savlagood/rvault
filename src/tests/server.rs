@@ -1,4 +1,4 @@
-use crate::http::auth::jwt_tokens::TokenPair;
+use crate::http::jwt_tokens::TokenPair;
 use crate::tests::{jwt_utils::extract_token_pair_from_response, routes};
 use crate::{config::Config, http::server::create_router, state::AppState};
 use once_cell::sync::Lazy;
@@ -81,7 +81,7 @@ where
 }
 
 pub async fn start_server() -> (u16, JoinHandle<()>) {
-    let app_state = AppState::setup().expect("Failed to setup app state");
+    let app_state = AppState::setup().await.expect("Failed to setup app state");
     let app = create_router(app_state);
 
     let listener = TcpListener::bind("127.0.0.1:0")

@@ -1,6 +1,6 @@
-use crate::http::auth::{
-    handlers::utils::get_admin_policies,
-    jwt_tokens::{utils as jwt_utils, AccessTokenClaims, RefreshTokenClaims, TokenPair},
+use crate::http::{
+    auth::handlers::utils::get_admin_policies,
+    jwt_tokens::{self, AccessTokenClaims, RefreshTokenClaims, TokenPair, TokenType},
 };
 use crate::tests::server::CONFIG;
 use jsonwebtoken::{DecodingKey, EncodingKey, Validation};
@@ -33,20 +33,17 @@ pub fn make_admin_token_pair_with_specified_access_refresh_exp(
 
     let mut access_token_claims = AccessTokenClaims::new(
         get_admin_policies(),
-        crate::http::auth::jwt_tokens::TokenType::Admin,
+        TokenType::Admin,
         CONFIG.access_token_exp,
     );
-    println!("Access token1234");
     access_token_claims.exp = access_exp;
-    let access_token = jwt_utils::encode_token(&access_token_claims, &encoding_key)
+    let access_token = jwt_tokens::encode_token_from_claims(&access_token_claims, &encoding_key)
         .expect("Error during encoding access token");
-
-    println!("Access token123");
 
     let mut refresh_token_claims =
         RefreshTokenClaims::new(access_token_claims.id, CONFIG.refresh_token_exp);
     refresh_token_claims.exp = refresh_exp;
-    let refresh_token = jwt_utils::encode_token(&refresh_token_claims, &encoding_key)
+    let refresh_token = jwt_tokens::encode_token_from_claims(&refresh_token_claims, &encoding_key)
         .expect("Error during encoding refresh token");
 
     TokenPair {

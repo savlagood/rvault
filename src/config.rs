@@ -5,6 +5,7 @@ use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
 const CONFIG_FILEPATH: &str = "./rvault_data/storage.yaml";
 const ENV_ROOT_TOKEN: &str = "RVAULT_ROOT_TOKEN";
 const ENV_AUTH_SECRET: &str = "RVAULT_AUTH_SECRET";
+const ENV_DB_CONNECTION_STRING: &str = "RVAULT_DB_CONNECTION_STRING";
 
 /// Ensures the existence of a directory, creating it if necessary.
 ///
@@ -107,6 +108,7 @@ impl YamlConfigData {
 struct EnvConfigData {
     root_token: String,
     jwt_secret: String,
+    db_connection_string: String,
 }
 
 impl EnvConfigData {
@@ -117,6 +119,7 @@ impl EnvConfigData {
         Ok(Self {
             root_token: get_env_var(ENV_ROOT_TOKEN)?,
             jwt_secret: get_env_var(ENV_AUTH_SECRET)?,
+            db_connection_string: get_env_var(ENV_DB_CONNECTION_STRING)?,
         })
     }
 }
@@ -134,6 +137,7 @@ pub struct Config {
     // Variables from env config
     pub root_token: String,
     pub jwt_secret: String,
+    pub db_connection_string: String,
 }
 
 impl Config {
@@ -177,6 +181,7 @@ impl Config {
 
             root_token: env_config.root_token,
             jwt_secret: env_config.jwt_secret,
+            db_connection_string: env_config.db_connection_string,
         };
 
         Ok(config)

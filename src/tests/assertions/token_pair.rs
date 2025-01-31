@@ -1,7 +1,7 @@
 use crate::tests::jwt_utils::{self, extract_token_claims};
 use crate::{
-    http::auth::{
-        handlers::utils::get_admin_policies,
+    http::{
+        auth::handlers::utils::get_admin_policies,
         jwt_tokens::{AccessTokenClaims, RefreshTokenClaims, TokenPair, TokenType},
     },
     policies::Policies,
@@ -30,7 +30,7 @@ pub async fn assert_response_contains_valid_refreshed_token_pair(
 ) {
     let claims = extract_token_claims::<AccessTokenClaims>(&previous_token_pair.access_token);
 
-    let previous_policies = claims.policy;
+    let previous_policies = claims.policies;
     let previous_token_type = claims.token_type;
 
     let new_token_pair = jwt_utils::extract_token_pair_from_response(response).await;
@@ -62,5 +62,5 @@ fn validate_token_pair(
     assert_eq!(refresh_token_claims.access_token_id, access_token_claims.id);
 
     // Checl policies
-    assert_eq!(access_token_claims.policy, expected_policies);
+    assert_eq!(access_token_claims.policies, expected_policies);
 }

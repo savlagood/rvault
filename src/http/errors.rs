@@ -1,47 +1,83 @@
+use crate::{http::jwt_tokens::TokenError, storage::StorageError};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::json;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+use tracing::error;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
+struct ErrorMessage {
+    message: String,
+}
+
+impl ErrorMessage {
+    fn with_message(message: String) -> Self {
+        Self { message }
+    }
+}
+
+#[derive(Debug, Error)]
 pub enum ResponseError {
-    InvalidToken,
-    InvalidRootToken,
-    TokenCreation,
-    DifferentTokens,
+    #[error("Do not have enough permissions to perform this operation")]
     AccessDenied,
+
+    #[error("Passed refresh_token is not related to passed access_token")]
+    DifferentTokens,
+
+    #[error("Do not have permissions to set global defaults fields")]
     CannotSetDefaultFields,
-    // InvalidOperation,
+
+    #[error(transparent)]
+    Token(#[from] TokenError),
+
+    #[error(transparent)]
+    Storage(#[from] StorageError),
 }
 
 impl IntoResponse for ResponseError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            ResponseError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token"),
-            ResponseError::InvalidRootToken => (StatusCode::UNAUTHORIZED, "Invalid root token"),
-            ResponseError::TokenCreation => {
-                (StatusCode::INTERNAL_SERVER_ERROR, "Token creation error")
-            }
-            ResponseError::DifferentTokens => (
-                StatusCode::BAD_REQUEST,
-                "Passed refresh_token is not related to passed access_token",
-            ),
-            ResponseError::AccessDenied => (StatusCode::FORBIDDEN, "Access denied"),
-            ResponseError::CannotSetDefaultFields => (
-                StatusCode::BAD_REQUEST,
-                "Do not have permissions to set global defaults fields",
-            ),
-            // ResponseError::InvalidOperation => (
-            //     StatusCode::FORBIDDEN,
-            //     "Do not have permissions to do this operation",
-            // ),
+            ResponseError::AccessDenied => (StatusCode::FORBIDDEN, self.to_string()),
+
+            ResponseError::DifferentTokens => (StatusCode::BAD_REQUEST, self.to_string()),
+
+            ResponseError::CannotSetDefaultFields => (StatusCode::BAD_REQUEST, self.to_string()),
+
+            ResponseError::Token(err) => match err {
+                TokenError::CreationFailed(jwt_err) => {
+                    error!("Failed to create JWT token: {jwt_err:?}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to create JWT token".to_string(),
+                    )
+                }
+                TokenError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid token".to_string()),
+            },
+
+            ResponseError::Storage(err) => match err {
+                StorageError::StorageCorrupted => {
+                    error!("Storage data has been corrupted!");
+                    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                }
+                StorageError::InternalStorage(err) => {
+                    error!("Internal storage error: {err:?}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal Storage Error".to_string(),
+                    )
+                }
+                StorageError::InvalidStorageState {
+                    current: _,
+                    expected: _,
+                } => (StatusCode::BAD_REQUEST, err.to_string()),
+                StorageError::InvalidSharedKeys(err) => (StatusCode::BAD_REQUEST, err.to_string()),
+            },
         };
 
-        let body = Json(json!({
-            "error": message,
-        }));
+        let body = Json(ErrorMessage::with_message(message));
 
         (status, body).into_response()
     }

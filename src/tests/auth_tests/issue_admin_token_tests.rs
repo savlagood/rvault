@@ -42,7 +42,7 @@ fn test_unauthorized() {
             .make_request(routes::ISSUE_ADMIN_TOKEN_PATH, request_body)
             .await;
 
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
         assert_response_contains_error_message(response).await;
     });
 }
