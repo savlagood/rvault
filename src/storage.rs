@@ -55,7 +55,7 @@ impl StorageDto {
         }
     }
 
-    fn determine_state(&self) -> Result<StorageState, StorageError> {
+    pub fn determine_state(&self) -> Result<StorageState, StorageError> {
         if self.encrypted_encryption_key.is_none() && self.shared_keys_settings.is_none() {
             return Ok(StorageState::Uninitialized);
         }

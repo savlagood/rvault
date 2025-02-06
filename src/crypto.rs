@@ -121,7 +121,7 @@ pub mod shared_keys {
         }
     }
 
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct SharedKeysSettings {
         pub threshold: u8,
         pub total_keys: u8,
@@ -129,7 +129,7 @@ pub mod shared_keys {
 
     impl SharedKeysSettings {
         pub fn assert_valid(&self) -> Result<(), SharedKeysError> {
-            if !(0 < self.threshold && self.threshold < self.total_keys) {
+            if !(1 < self.threshold && self.threshold < self.total_keys) {
                 Err(SharedKeysError::Settings)
             } else {
                 Ok(())

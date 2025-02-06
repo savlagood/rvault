@@ -82,8 +82,8 @@ fn test_without_authorization_token() {
             .make_request(routes::ISSUE_USER_TOKEN_PATH, request_body)
             .await;
 
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assertions::error_message::assert_response_contains_error_message(response).await;
+        let expected_status_code = StatusCode::UNAUTHORIZED;
+        assertions::error_message::assert_error_response(response, expected_status_code).await;
     });
 }
 
@@ -144,7 +144,7 @@ fn test_impossibility_to_set_global_permissions() {
             .make_admin_request(routes::ISSUE_USER_TOKEN_PATH, request_body)
             .await;
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assertions::error_message::assert_response_contains_error_message(response).await;
+        let expected_status_code = StatusCode::BAD_REQUEST;
+        assertions::error_message::assert_error_response(response, expected_status_code).await;
     });
 }

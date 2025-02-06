@@ -66,8 +66,8 @@ fn test_refresh_token_expired() {
             .make_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
             .await;
 
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-        assertions::error_message::assert_response_contains_error_message(response).await;
+        let expected_status_code = StatusCode::UNAUTHORIZED;
+        assertions::error_message::assert_error_response(response, expected_status_code).await;
     });
 }
 
@@ -91,7 +91,7 @@ fn test_access_token_not_linked_to_refresh_token() {
             .make_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
             .await;
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assertions::error_message::assert_response_contains_error_message(response).await;
+        let expected_status_code = StatusCode::BAD_REQUEST;
+        assertions::error_message::assert_error_response(response, expected_status_code).await;
     });
 }

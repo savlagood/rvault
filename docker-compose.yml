@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  mongodb:
+    container_name: mongodb-rvault
+    image: mongodb/mongodb-community-server:latest
+    ports:
+      - '27017:27017'
+    networks:
+      - mongo_net
+
+networks:
+  mongo_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24

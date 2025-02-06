@@ -1,9 +1,5 @@
 use crate::tests::{
-    assertions::{
-        error_message::assert_response_contains_error_message,
-        token_pair::assert_response_contains_valid_admin_token_pair,
-    },
-    routes,
+    assertions, routes,
     server::{use_app, ClientWithServer, CONFIG},
 };
 use reqwest::StatusCode;
@@ -25,7 +21,7 @@ fn test_everything_ok() {
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
-        assert_response_contains_valid_admin_token_pair(response).await;
+        assertions::token_pair::assert_response_contains_valid_admin_token_pair(response).await;
     });
 }
 
@@ -42,7 +38,7 @@ fn test_unauthorized() {
             .make_request(routes::ISSUE_ADMIN_TOKEN_PATH, request_body)
             .await;
 
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        assert_response_contains_error_message(response).await;
+        let expected_status_code = StatusCode::FORBIDDEN;
+        assertions::error_message::assert_error_response(response, expected_status_code).await;
     });
 }

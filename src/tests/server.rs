@@ -1,6 +1,9 @@
-use crate::http::jwt_tokens::TokenPair;
-use crate::tests::{jwt_utils::extract_token_pair_from_response, routes};
-use crate::{config::Config, http::server::create_router, state::AppState};
+use crate::tests::{database, jwt_utils::extract_token_pair_from_response, routes};
+use crate::{
+    config::Config,
+    http::{jwt_tokens::TokenPair, server::create_router},
+    state::AppState,
+};
 use once_cell::sync::Lazy;
 use reqwest::{Client, Response};
 use serde_json::Value;
@@ -71,15 +74,6 @@ impl ClientWithServer {
     }
 }
 
-pub fn use_app<F>(test_future: F)
-where
-    F: std::future::Future,
-{
-    RUNTIME.block_on(async move {
-        test_future.await;
-    })
-}
-
 pub async fn start_server() -> (u16, JoinHandle<()>) {
     let app_state = AppState::setup().await.expect("Failed to setup app state");
     let app = create_router(app_state);
@@ -99,4 +93,14 @@ pub async fn start_server() -> (u16, JoinHandle<()>) {
     });
 
     (port, server)
+}
+
+pub fn use_app<F>(test_future: F)
+where
+    F: std::future::Future,
+{
+    RUNTIME.block_on(async move {
+        database::clear_db_before_test().await;
+        test_future.await;
+    })
 }
