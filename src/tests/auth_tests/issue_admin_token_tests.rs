@@ -1,6 +1,12 @@
 use crate::tests::{
-    assertions, routes,
-    server::{use_app, ClientWithServer, CONFIG},
+    assertions::{
+        error_message::assert_error_response,
+        token_pair::assert_response_contains_valid_admin_token_pair,
+    },
+    consts::ENV_ROOT_TOKEN,
+    routes,
+    server::{use_app, ClientWithServer},
+    utils::get_env_var,
 };
 use reqwest::StatusCode;
 
@@ -8,10 +14,8 @@ use reqwest::StatusCode;
 use pretty_assertions::assert_eq;
 
 #[test]
-fn test_everything_ok() {
-    let request_body = serde_json::json!({
-        "token": CONFIG.root_token.clone()
-    });
+fn test_issue_token() {
+    let request_body = root_token_as_request_body();
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -21,15 +25,20 @@ fn test_everything_ok() {
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
-        assertions::token_pair::assert_response_contains_valid_admin_token_pair(response).await;
+        assert_response_contains_valid_admin_token_pair(response).await;
     });
 }
 
+fn root_token_as_request_body() -> serde_json::Value {
+    let root_token = get_env_var(ENV_ROOT_TOKEN);
+    let request_body = token_into_request_body(&root_token);
+
+    request_body
+}
+
 #[test]
-fn test_unauthorized() {
-    let request_body = serde_json::json!({
-        "token": "some_invalid_token",
-    });
+fn test_invalid_root_token() {
+    let request_body = token_into_request_body("some_invalid_token");
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -39,6 +48,26 @@ fn test_unauthorized() {
             .await;
 
         let expected_status_code = StatusCode::FORBIDDEN;
-        assertions::error_message::assert_error_response(response, expected_status_code).await;
+        assert_error_response(response, expected_status_code).await;
     });
+}
+
+#[test]
+fn test_empty_root_token() {
+    let request_body = token_into_request_body("");
+
+    use_app(async move {
+        let client = ClientWithServer::new().await;
+
+        let response = client
+            .make_request(routes::ISSUE_ADMIN_TOKEN_PATH, request_body)
+            .await;
+
+        let expected_status_code = StatusCode::FORBIDDEN;
+        assert_error_response(response, expected_status_code).await;
+    });
+}
+
+fn token_into_request_body(token: &str) -> serde_json::Value {
+    serde_json::json!({"token": token})
 }

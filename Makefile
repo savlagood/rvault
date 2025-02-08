@@ -1,6 +1,6 @@
-.PHONY: format
+.PHONY: format clippy docker-up
 
-check: format
+check: format clippy
 	cargo check
 
 format:
@@ -12,11 +12,17 @@ clippy:
 build-debug: format
 	cargo build
 
-run-debug: format
+run-debug: docker-up format
 	cargo run
 
-test-nocapture: format
+test-verbose: docker-up format
 	cargo test -- --test-threads=1 --nocapture --color=always
 
-test: format
+test: docker-up format
 	cargo test -- --test-threads=1 --color=always
+
+docker-up:
+	docker-compose -f docker-compose.yml up -d
+
+docker-down:
+	docker-compose -f docker-compose.yml down

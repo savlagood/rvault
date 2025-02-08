@@ -1,4 +1,5 @@
 /target
 /rvault_data
+.vscode
 
 .env

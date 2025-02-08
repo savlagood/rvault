@@ -1,6 +1,14 @@
-use crate::policies::Policies;
 use crate::tests::{
-    assertions, routes,
+    assertions::{
+        error_message::assert_error_response,
+        token_pair::assert_response_contains_valid_token_pair_with_expected_payload,
+    },
+    consts::SIMPLE_USER_POLICIES,
+    models::{
+        jwt_tokens::{TokenPayload, TokenType},
+        policies::Policies,
+    },
+    routes,
     server::{use_app, ClientWithServer},
 };
 use reqwest::StatusCode;
@@ -9,26 +17,10 @@ use reqwest::StatusCode;
 use pretty_assertions::assert_eq;
 
 #[test]
-fn test_everything_ok() {
-    let request_body = serde_json::json!({
-        "some_topic_name1": {
-            "permissions": ["create", "read"],
-            "secrets": {
-                "some_secret_name1": ["read", "update"],
-                "some_secret_name2": ["read", "update", "delete"],
-                "__default__": ["read"]
-            }
-        },
-        "some_topic_name2": {
-            "permissions": ["create", "read", "delete"],
-            "secrets": {
-                "some_secret_name1": ["read", "update", "create", "delete"],
-                "some_secret_name2": ["read", "update", "create"]
-            }
-        }
-    });
+fn test_issue_token() {
+    let request_body = serde_json::json!(SIMPLE_USER_POLICIES.clone());
 
-    let expected_policies_value = serde_json::json!({
+    let expected_policies = Policies::from_value(serde_json::json!({
         "some_topic_name2": {
             "permissions": ["read", "delete", "create"],
             "secrets": {
@@ -51,9 +43,11 @@ fn test_everything_ok() {
                 "__default__": []
             }
         }
-    });
-    let expected_policies: Policies = serde_json::from_value(expected_policies_value)
-        .expect("Error during parsing policies from json value to struct");
+    }));
+    let expected_payload = TokenPayload {
+        policies: expected_policies,
+        token_type: TokenType::User,
+    };
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -63,17 +57,14 @@ fn test_everything_ok() {
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
-        assertions::token_pair::assert_response_contains_valid_token_pair_with_excepted_policies(
-            response,
-            expected_policies,
-        )
-        .await;
-    });
+        assert_response_contains_valid_token_pair_with_expected_payload(response, expected_payload)
+            .await;
+    })
 }
 
 #[test]
-fn test_without_authorization_token() {
-    let request_body = serde_json::json!({});
+fn test_unauthorized() {
+    let request_body = serde_json::json!(SIMPLE_USER_POLICIES.clone());
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -83,24 +74,26 @@ fn test_without_authorization_token() {
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
-        assertions::error_message::assert_error_response(response, expected_status_code).await;
+        assert_error_response(response, expected_status_code).await;
     });
 }
 
 #[test]
-fn with_empty_body() {
+fn test_without_policies() {
     let request_body = serde_json::json!({});
 
-    let expected_policies_value = serde_json::json!({
+    let expected_policies = Policies::from_value(serde_json::json!({
         "__default__": {
-        "permissions": [],
+            "permissions": [],
             "secrets": {
                 "__default__": []
             }
         }
-    });
-    let expected_policies: Policies = serde_json::from_value(expected_policies_value)
-        .expect("Error during parsing expected policies from string to struct");
+    }));
+    let expected_payload = TokenPayload {
+        policies: expected_policies,
+        token_type: TokenType::User,
+    };
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -110,29 +103,18 @@ fn with_empty_body() {
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
-        assertions::token_pair::assert_response_contains_valid_token_pair_with_excepted_policies(
-            response,
-            expected_policies,
-        )
-        .await;
+        assert_response_contains_valid_token_pair_with_expected_payload(response, expected_payload)
+            .await;
     });
 }
 
 #[test]
 fn test_impossibility_to_set_global_permissions() {
     let request_body = serde_json::json!({
-        "some_topic_name1": {
+        "__default__": {
             "permissions": ["create", "read"],
             "secrets": {
-                "some_secret_name1": ["read", "update"],
-                "some_secret_name2": ["read", "update", "delete"],
                 "__default__": ["read"]
-            }
-        },
-        "__default__": {
-            "permissions": ["read"],
-            "secrets": {
-                "__default__": ["create"]
             }
         }
     });
@@ -145,6 +127,6 @@ fn test_impossibility_to_set_global_permissions() {
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
-        assertions::error_message::assert_error_response(response, expected_status_code).await;
+        assert_error_response(response, expected_status_code).await;
     });
 }

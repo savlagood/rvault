@@ -13,6 +13,7 @@ mod tests;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenv::from_filename(".env").context("Failed to load values from .env file")?;
     tracing_subscriber::fmt::init();
 
     let app_state = state::AppState::setup()

@@ -1,5 +1,6 @@
 use crate::tests::{
     assertions::error_message::assert_error_response,
+    consts::SIMPLE_USER_POLICIES,
     routes,
     server::{use_app, ClientWithServer},
     storage,
@@ -38,6 +39,27 @@ fn test_unauthorized() {
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
+        assert_error_response(response, expected_status_code).await;
+    });
+}
+
+#[test]
+fn test_seal_with_user_token() {
+    use_app(async {
+        let client = ClientWithServer::new().await;
+
+        storage_to_unsealed_state(&client).await;
+
+        let request_body = serde_json::json!({});
+        let response = client
+            .make_user_request(
+                routes::SEAL_STORAGE,
+                SIMPLE_USER_POLICIES.clone(),
+                request_body,
+            )
+            .await;
+
+        let expected_status_code = StatusCode::FORBIDDEN;
         assert_error_response(response, expected_status_code).await;
     });
 }

@@ -12,7 +12,6 @@ use crate::{
 use axum::{extract::State, routing::post, Json, Router};
 use jsonwebtoken::DecodingKey;
 
-/// Utility functions for token-related operations
 pub mod utils {
     use crate::policies::{self, Permission, Policies};
 
@@ -23,7 +22,6 @@ pub mod utils {
         Permission::Delete,
     ];
 
-    /// Creates an admin policy with full permissions.
     pub fn get_admin_policies() -> Policies {
         let mut policies = Policies::new();
 
@@ -38,18 +36,15 @@ pub mod utils {
     }
 }
 
-/// Models for request payloads
 mod models {
     use serde::{Deserialize, Serialize};
 
-    /// Represents a request to issue a token.
     #[derive(Serialize, Deserialize)]
     pub struct TokenRequest {
         pub token: String,
     }
 }
 
-/// Defines the router for token management endpoints.
 pub fn create_router(app_state: AppState) -> Router {
     Router::new()
         .route("/token/issue/admin", post(issue_admin_token))
@@ -58,7 +53,6 @@ pub fn create_router(app_state: AppState) -> Router {
         .with_state(app_state)
 }
 
-/// Issues an admin token if the provided root token is valid.
 async fn issue_admin_token(
     State(state): State<AppState>,
     Json(payload): Json<models::TokenRequest>,
@@ -76,7 +70,6 @@ async fn issue_admin_token(
     Ok(Json(response_body))
 }
 
-/// Issues a user token if the provided claims belong to an admin.
 async fn issue_user_token(
     claims: AccessTokenClaims,
     State(state): State<AppState>,
@@ -99,7 +92,6 @@ async fn issue_user_token(
     Ok(Json(TokenPair::new(config, policies, TokenType::User)?))
 }
 
-/// Refreshes a token pair, ensuring the validity and consistency of the provided tokens.
 async fn refresh_token(
     State(state): State<AppState>,
     Json(token_pair): Json<TokenPair>,
@@ -122,8 +114,10 @@ async fn refresh_token(
     }
 
     // Generate new token pair
-    let polies = utils::get_admin_policies();
-    let response_body = TokenPair::new(config, polies, TokenType::Admin)?;
+    let policies = access_token_claims.policies;
+    let token_type = access_token_claims.token_type;
+
+    let response_body = TokenPair::new(config, policies, token_type)?;
 
     Ok(Json(response_body))
 }

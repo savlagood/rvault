@@ -62,24 +62,6 @@ impl MongoDb {
         Ok(())
     }
 
-    #[cfg(test)]
-    pub async fn drop_all_collections(&self) -> Result<()> {
-        let db = self.db.lock().await;
-
-        let collection_names = db
-            .list_collection_names()
-            .await
-            .context("Failed to retrieve list of collection names")?;
-        for name in collection_names {
-            db.collection::<mongodb::bson::Document>(&name)
-                .drop()
-                .await
-                .context(format!("Failed to drop collection: {name}"))?;
-        }
-
-        Ok(())
-    }
-
     async fn get_storage_collection(&self) -> Collection<StorageDto> {
         let db = self.db.lock().await;
         db.collection::<StorageDto>(STORAGE_COLLECTION_NAME)

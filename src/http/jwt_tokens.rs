@@ -68,11 +68,11 @@ impl TokenPair {
         let encoding_key = EncodingKey::from_secret(jwt_secret);
 
         let access_token_claims =
-            AccessTokenClaims::new(policies, token_type, config.access_token_exp);
+            AccessTokenClaims::new(policies, token_type, config.access_token_ttl);
         let access_token = encode_token_from_claims(&access_token_claims, &encoding_key)?;
 
         let refresh_token_claims =
-            RefreshTokenClaims::new(access_token_claims.id, config.refresh_token_exp);
+            RefreshTokenClaims::new(access_token_claims.id, config.refresh_token_ttl);
         let refresh_token = encode_token_from_claims(&refresh_token_claims, &encoding_key)?;
 
         Ok(Self {

@@ -1,6 +1,6 @@
 use crate::tests::{
     consts::{THRESHOLD, TOTAL_KEYS},
-    models::SharedKeys,
+    models::shared_keys::SharedKeys,
     routes,
     server::ClientWithServer,
 };

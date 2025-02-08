@@ -7,10 +7,6 @@ const ENV_ROOT_TOKEN: &str = "RVAULT_ROOT_TOKEN";
 const ENV_AUTH_SECRET: &str = "RVAULT_AUTH_SECRET";
 const ENV_DB_CONNECTION_STRING: &str = "RVAULT_DB_CONNECTION_STRING";
 
-/// Ensures the existence of a directory, creating it if necessary.
-///
-/// # Arguments
-/// * `path` - The path of the directory to check or create.
 fn check_directory_existence(path: &Path) -> Result<()> {
     if !path.exists() {
         fs::create_dir_all(path).context(format!("Failed to create directory {:?}", path,))?;
@@ -19,13 +15,6 @@ fn check_directory_existence(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Retrieves and parses an environment variable.
-///
-/// # Arguments
-/// * `key` - The name of the environment variable.
-///
-/// # Returns
-/// The parsed value of the environment variable.
 fn get_env_var<T: FromStr>(key: &str) -> Result<T> {
     let value = std::env::var(key).context(format!("Environment vaiable {:?} is required", key))?;
 
@@ -35,29 +24,24 @@ fn get_env_var<T: FromStr>(key: &str) -> Result<T> {
     Ok(result)
 }
 
-/// Struct representing YAML configuration data.
 #[derive(Serialize, Deserialize)]
 struct YamlConfigData {
-    storage_dir_path: Option<String>,
     server_port: Option<u16>,
     request_timeout_ms: Option<u64>,
-    access_token_exp_seconds: Option<u64>,
-    refresh_token_exp_seconds: Option<u64>,
+    access_token_ttl_seconds: Option<u64>,
+    refresh_token_ttl_seconds: Option<u64>,
 }
 
 impl YamlConfigData {
-    /// Returns the default YAML configuration.
     fn default() -> Self {
         Self {
-            storage_dir_path: Some("./".to_string()),
             server_port: Some(9200),
             request_timeout_ms: Some(3000),
-            access_token_exp_seconds: Some(24 * 3600),
-            refresh_token_exp_seconds: Some(7 * 24 * 3600),
+            access_token_ttl_seconds: Some(24 * 3600),
+            refresh_token_ttl_seconds: Some(7 * 24 * 3600),
         }
     }
 
-    /// Loads configuration from the given path or creates a default configuration if none exists.
     fn load(config_path: &Path) -> Result<Self> {
         let config_dir = config_path.parent().unwrap();
 
@@ -80,7 +64,6 @@ impl YamlConfigData {
         Ok(config_data)
     }
 
-    /// Saves the current configuration to the file by the given path.
     fn save(&self, config_path: &Path) -> Result<()> {
         let config_dir = config_path.parent().unwrap();
 
@@ -104,7 +87,6 @@ impl YamlConfigData {
     }
 }
 
-/// Struct representing environment variable configuration data.
 struct EnvConfigData {
     root_token: String,
     jwt_secret: String,
@@ -112,10 +94,7 @@ struct EnvConfigData {
 }
 
 impl EnvConfigData {
-    /// Loads configuration data from environment variables.
     fn load_from_env() -> Result<Self> {
-        dotenv::dotenv().context("Failed to load values from .env file")?;
-
         Ok(Self {
             root_token: get_env_var(ENV_ROOT_TOKEN)?,
             jwt_secret: get_env_var(ENV_AUTH_SECRET)?,
@@ -125,23 +104,18 @@ impl EnvConfigData {
 }
 
 #[derive(Clone, Debug)]
-/// Main configuration struct combining YAML and environment configurations.
 pub struct Config {
-    // Variables from yaml config
-    pub _storage_dir_path: String,
     pub server_port: u16,
     pub request_timeout: Duration,
-    pub access_token_exp: Duration,
-    pub refresh_token_exp: Duration,
+    pub access_token_ttl: Duration,
+    pub refresh_token_ttl: Duration,
 
-    // Variables from env config
     pub root_token: String,
     pub jwt_secret: String,
     pub db_connection_string: String,
 }
 
 impl Config {
-    /// Initializes the configuration by loading YAML and environment data.
     pub fn setup() -> Result<Self> {
         let yaml_config_path = Path::new(CONFIG_FILEPATH);
 
@@ -152,31 +126,27 @@ impl Config {
         Ok(config)
     }
 
-    /// Combines YAML and environment configurations into a `Config` instance.
     fn from_configs(yaml_config: YamlConfigData, env_config: EnvConfigData) -> Result<Self> {
         fn required(variable_name: &str) -> String {
             format!("{} is required configuration parameter", variable_name)
         }
 
         let config = Self {
-            _storage_dir_path: yaml_config
-                .storage_dir_path
-                .context(required("storage_dir_path"))?,
             server_port: yaml_config.server_port.context(required("server_port"))?,
             request_timeout: Duration::from_millis(
                 yaml_config
                     .request_timeout_ms
                     .context(required("request_timeout_ms"))?,
             ),
-            access_token_exp: Duration::from_secs(
+            access_token_ttl: Duration::from_secs(
                 yaml_config
-                    .access_token_exp_seconds
-                    .context(required("access_token_exp_seconds"))?,
+                    .access_token_ttl_seconds
+                    .context(required("access_token_ttl_seconds"))?,
             ),
-            refresh_token_exp: Duration::from_secs(
+            refresh_token_ttl: Duration::from_secs(
                 yaml_config
-                    .refresh_token_exp_seconds
-                    .context(required("refresh_token_exp_seconds"))?,
+                    .refresh_token_ttl_seconds
+                    .context(required("refresh_token_ttl_seconds"))?,
             ),
 
             root_token: env_config.root_token,

@@ -1,6 +1,7 @@
 use crate::tests::{
     assertions::error_message::assert_error_response,
-    models::{SharedKeys, SharedKeysSettings},
+    consts::SIMPLE_USER_POLICIES,
+    models::shared_keys::{SharedKeys, SharedKeysSettings},
     routes,
     server::{use_app, ClientWithServer},
     storage,
@@ -49,6 +50,27 @@ fn test_unauthorized() {
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
+        assert_error_response(response, expected_status_code).await;
+    });
+}
+
+#[test]
+fn test_init_with_user_token() {
+    let shared_keys_settings = SharedKeysSettings::new_with_defaults();
+    let request_body = shared_keys_settings.into_json_value();
+
+    use_app(async move {
+        let client = ClientWithServer::new().await;
+
+        let response = client
+            .make_user_request(
+                routes::INIT_STORAGE,
+                SIMPLE_USER_POLICIES.clone(),
+                request_body,
+            )
+            .await;
+
+        let expected_status_code = StatusCode::FORBIDDEN;
         assert_error_response(response, expected_status_code).await;
     });
 }

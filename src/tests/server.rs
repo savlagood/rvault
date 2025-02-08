@@ -1,17 +1,15 @@
-use crate::tests::{database, jwt_utils::extract_token_pair_from_response, routes};
-use crate::{
-    config::Config,
-    http::{jwt_tokens::TokenPair, server::create_router},
-    state::AppState,
+use crate::{http::server::create_router, state::AppState};
+
+use crate::tests::{
+    consts::ENV_ROOT_TOKEN,
+    models::{jwt_tokens::TokenPair, policies::Policies},
+    routes, utils,
 };
 use once_cell::sync::Lazy;
 use reqwest::{Client, Response};
 use serde_json::Value;
 use tokio::{net::TcpListener, runtime::Runtime, task::JoinHandle};
 
-use super::routes::build_url;
-
-pub static CONFIG: Lazy<Config> = Lazy::new(|| Config::setup().expect("Failed to setup config"));
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().expect("Failed to create runtime"));
 
 pub struct ClientWithServer {
@@ -50,8 +48,16 @@ impl ClientWithServer {
             .await
     }
 
+    pub async fn make_user_request(&self, path: &str, policies: Policies, body: Value) -> Response {
+        let token_pair = self.fetch_user_token_pair(policies).await;
+        let user_access_token = token_pair.access_token;
+
+        self.make_authorized_request(path, body, &user_access_token)
+            .await
+    }
+
     pub async fn make_authorized_request(&self, path: &str, body: Value, token: &str) -> Response {
-        let url = build_url(path, self.port);
+        let url = routes::build_url(path, self.port);
         self.client
             .post(url)
             .json(&body)
@@ -62,15 +68,25 @@ impl ClientWithServer {
     }
 
     pub async fn fetch_admin_token_pair(&self) -> TokenPair {
+        let root_token = utils::get_env_var(ENV_ROOT_TOKEN);
         let request_body = serde_json::json!({
-            "token": CONFIG.root_token.clone()
+            "token": root_token,
         });
 
         let response = self
             .make_request(routes::ISSUE_ADMIN_TOKEN_PATH, request_body)
             .await;
 
-        extract_token_pair_from_response(response).await
+        TokenPair::from_response(response).await
+    }
+
+    pub async fn fetch_user_token_pair(&self, policies: Policies) -> TokenPair {
+        let request_body = serde_json::json!(policies);
+        let response = self
+            .make_admin_request(routes::ISSUE_USER_TOKEN_PATH, request_body)
+            .await;
+
+        TokenPair::from_response(response).await
     }
 }
 
@@ -99,8 +115,10 @@ pub fn use_app<F>(test_future: F)
 where
     F: std::future::Future,
 {
+    dotenv::from_filename(".env.test").expect("Failed to load values from .env.test file");
+
     RUNTIME.block_on(async move {
-        database::clear_db_before_test().await;
+        utils::database::clear_test_data_from_db().await;
         test_future.await;
     })
 }

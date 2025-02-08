@@ -8,6 +8,7 @@ services:
       - '27017:27017'
     networks:
       - mongo_net
+    restart: always
 
 networks:
   mongo_net:
