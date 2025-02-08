@@ -151,6 +151,8 @@ paths:
       description: Initialize Storage
       tags:
         - Storage
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -173,6 +175,66 @@ paths:
                 $ref: "#/components/schemas/SharedKeys"
         '400':
           description: Bad request - storage is already initialized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '401':
+          description: Unauthorized - Missing or malformed token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '422':
+          $ref: "#/components/responses/UnprocessableEntity"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
+
+  /storage/unseal:
+    post:
+      description: Unseal Storage
+      tags:
+        - Storage
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SharedKeys"
+      responses:
+        '200':
+          description: Successfully unsealed storage.
+        '400':
+          description: Bad request - invalid shared keys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '401':
+          description: Unauthorized - Missing or malformed token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        '422':
+          $ref: "#/components/responses/UnprocessableEntity"
+        '500':
+          $ref: "#/components/responses/InternalServerError"
+
+  /storage/seal:
+    post:
+      description: Seal Storage
+      tags:
+        - Storage
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successfully sealed storage.
+        '400':
+          description: Bad request - storage is already sealed.
           content:
             application/json:
               schema:
