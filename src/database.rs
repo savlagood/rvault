@@ -1,4 +1,4 @@
-use crate::storage::StorageDto;
+use crate::{storage::StorageDto, topics::Topic};
 use anyhow::{Context, Result};
 use mongodb::{bson, Client, Collection, Database};
 use std::sync::Arc;
@@ -12,6 +12,8 @@ const DB_NAME: &str = "rvault";
 const DB_NAME: &str = "test_rvault";
 
 const STORAGE_COLLECTION_NAME: &str = "storage";
+const TOPICS_COLLECTION_NAME: &str = "topics";
+// const SECRETS_COLLECTION_NAME: &str = "secrets";
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -20,6 +22,9 @@ pub enum DatabaseError {
 
     #[error("Failed to serialize/deserialize object into/from bson::doc")]
     RepresentationError(#[from] bson::ser::Error),
+
+    #[error("Topic with such name already exists")]
+    TopicAlreadyExists,
 }
 
 pub struct MongoDb {
@@ -62,8 +67,33 @@ impl MongoDb {
         Ok(())
     }
 
+    pub async fn create_topic(&self, topic: Topic) -> Result<(), DatabaseError> {
+        let topic_name = topic.name.as_str();
+        let collection = self.get_topics_collection().await;
+
+        let filter = bson::doc! { "name": topic_name };
+        if collection.find_one(filter).await?.is_some() {
+            return Err(DatabaseError::TopicAlreadyExists);
+        }
+
+        collection.insert_one(topic).await?;
+
+        Ok(())
+    }
+
+    // pub async fn read_topic(&self) {}
+
+    // pub async fn update_topic(&self) {}
+
+    // pub async fn delete_topic(&self) {}
+
     async fn get_storage_collection(&self) -> Collection<StorageDto> {
         let db = self.db.lock().await;
         db.collection::<StorageDto>(STORAGE_COLLECTION_NAME)
+    }
+
+    async fn get_topics_collection(&self) -> Collection<Topic> {
+        let db = self.db.lock().await;
+        db.collection::<Topic>(TOPICS_COLLECTION_NAME)
     }
 }

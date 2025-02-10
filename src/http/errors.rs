@@ -1,4 +1,7 @@
-use crate::{http::jwt_tokens::TokenError, storage::StorageError};
+use crate::{
+    database::DatabaseError, http::jwt_tokens::TokenError, policies::PoliciesError,
+    storage::StorageError, topics::TopicsError,
+};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -30,21 +33,32 @@ pub enum ResponseError {
     #[error("Do not have permissions to set global defaults fields")]
     CannotSetDefaultFields,
 
+    #[error("Topic name can only contain Latin letters (both uppercase and lowercase), numbers, and underscores")]
+    InvalidTopicName,
+
     #[error(transparent)]
     Token(#[from] TokenError),
 
     #[error(transparent)]
     Storage(#[from] StorageError),
+
+    #[error(transparent)]
+    Topics(#[from] TopicsError),
+
+    #[error(transparent)]
+    Policies(#[from] PoliciesError),
+
+    #[error(transparent)]
+    Database(#[from] DatabaseError),
 }
 
 impl IntoResponse for ResponseError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             ResponseError::AccessDenied => (StatusCode::FORBIDDEN, self.to_string()),
-
             ResponseError::DifferentTokens => (StatusCode::BAD_REQUEST, self.to_string()),
-
             ResponseError::CannotSetDefaultFields => (StatusCode::BAD_REQUEST, self.to_string()),
+            ResponseError::InvalidTopicName => (StatusCode::BAD_REQUEST, self.to_string()),
 
             ResponseError::Token(err) => match err {
                 TokenError::CreationFailed(jwt_err) => {
@@ -74,6 +88,34 @@ impl IntoResponse for ResponseError {
                     expected: _,
                 } => (StatusCode::BAD_REQUEST, err.to_string()),
                 StorageError::InvalidSharedKeys(err) => (StatusCode::BAD_REQUEST, err.to_string()),
+            },
+
+            ResponseError::Topics(err) => match err {
+                // TopicsError::ChecksumMismatch => (
+                //     StatusCode::FORBIDDEN,
+                //     "Invalid topic encryption key".to_string(),
+                // ),
+                TopicsError::InvalidStorageEncryptionKey => {
+                    error!("Internal storage error: {err:?}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal Storage Error".to_string(),
+                    )
+                }
+                TopicsError::InvalidTopicEncryptionKey => (StatusCode::FORBIDDEN, err.to_string()),
+            },
+
+            ResponseError::Policies(err) => (StatusCode::FORBIDDEN, err.to_string()),
+
+            ResponseError::Database(err) => match err {
+                DatabaseError::TopicAlreadyExists => (StatusCode::CONFLICT, err.to_string()),
+                _ => {
+                    error!("Internal database error: {err:?}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal database error".to_string(),
+                    )
+                }
             },
         };
 

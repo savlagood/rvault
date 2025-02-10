@@ -8,3 +8,4 @@ mod utils;
 
 mod auth_tests;
 mod storage_tests;
+mod topics_tests;

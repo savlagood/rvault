@@ -8,6 +8,7 @@ use crate::{
 };
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -69,14 +70,14 @@ impl StorageDto {
 }
 
 pub struct Storage {
-    db: MongoDb,
+    db: Arc<MongoDb>,
     shared_keys_settings: Option<SharedKeysSettings>,
     encryption_key: Option<Vec<u8>>,
     encrypted_encryption_key: Option<Vec<u8>>,
 }
 
 impl Storage {
-    pub async fn setup(db: MongoDb) -> Result<Self, StorageError> {
+    pub async fn setup(db: Arc<MongoDb>) -> Result<Self, StorageError> {
         let storage_dto = db
             .read_storage()
             .await
@@ -86,7 +87,10 @@ impl Storage {
         Self::setup_storage_from_dto(db, storage_dto)
     }
 
-    fn setup_storage_from_dto(db: MongoDb, storage_dto: StorageDto) -> Result<Self, StorageError> {
+    fn setup_storage_from_dto(
+        db: Arc<MongoDb>,
+        storage_dto: StorageDto,
+    ) -> Result<Self, StorageError> {
         let storage = match storage_dto.determine_state()? {
             StorageState::Sealed => Self::setup_sealed_storage(db, storage_dto)?,
             StorageState::Uninitialized => Self::setup_uninitialized_storage(db)?,
@@ -96,7 +100,10 @@ impl Storage {
         Ok(storage)
     }
 
-    fn setup_sealed_storage(db: MongoDb, storage_dto: StorageDto) -> Result<Self, StorageError> {
+    fn setup_sealed_storage(
+        db: Arc<MongoDb>,
+        storage_dto: StorageDto,
+    ) -> Result<Self, StorageError> {
         let storage = Self {
             db,
             shared_keys_settings: Some(
@@ -115,7 +122,7 @@ impl Storage {
         Ok(storage)
     }
 
-    fn setup_uninitialized_storage(db: MongoDb) -> Result<Self, StorageError> {
+    fn setup_uninitialized_storage(db: Arc<MongoDb>) -> Result<Self, StorageError> {
         let storage = Self {
             db,
             shared_keys_settings: None,
@@ -126,11 +133,19 @@ impl Storage {
         Ok(storage)
     }
 
+    pub fn get_encryption_key(&self) -> Result<&Vec<u8>, StorageError> {
+        self.ensure_state_is(StorageState::Unsealed)?;
+
+        self.encryption_key
+            .as_ref()
+            .ok_or(StorageError::StorageCorrupted)
+    }
+
     pub async fn initialize(
         &mut self,
         shared_keys_settings: SharedKeysSettings,
     ) -> Result<SharedKeys, StorageError> {
-        self.assert_state(StorageState::Uninitialized)?;
+        self.ensure_state_is(StorageState::Uninitialized)?;
         shared_keys_settings.assert_valid()?;
 
         let root_key = crypto::generate_256_bit_key();
@@ -152,7 +167,7 @@ impl Storage {
     }
 
     pub async fn unseal(&mut self, shared_keys: SharedKeys) -> Result<(), StorageError> {
-        self.assert_state(StorageState::Sealed)?;
+        self.ensure_state_is(StorageState::Sealed)?;
 
         let shared_keys_settings = self
             .shared_keys_settings
@@ -176,13 +191,13 @@ impl Storage {
     }
 
     pub async fn seal(&mut self) -> Result<(), StorageError> {
-        self.assert_state(StorageState::Unsealed)?;
+        self.ensure_state_is(StorageState::Unsealed)?;
 
         self.encryption_key = None;
         Ok(())
     }
 
-    fn assert_state(&self, expected: StorageState) -> Result<(), StorageError> {
+    pub fn ensure_state_is(&self, expected: StorageState) -> Result<(), StorageError> {
         let current = self.determine_state()?;
         if current != expected {
             return Err(StorageError::InvalidStorageState { current, expected });

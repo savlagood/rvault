@@ -159,3 +159,22 @@ pub mod shared_keys {
         }
     }
 }
+
+pub mod topics {
+    use reqwest::Response;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct TopicEncryptionKey {
+        pub key: String,
+    }
+
+    impl TopicEncryptionKey {
+        pub async fn from_response(response: Response) -> Self {
+            response
+                .json::<Self>()
+                .await
+                .expect("Error during parsing token pair from response")
+        }
+    }
+}

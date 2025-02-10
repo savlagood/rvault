@@ -1,5 +1,7 @@
-use super::storage;
-use crate::{http::auth, state::AppState};
+use crate::{
+    http::{auth, storage, topics},
+    state::AppState,
+};
 use anyhow::{Context, Result};
 use axum::{http::header::AUTHORIZATION, Router};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -37,7 +39,8 @@ pub fn create_router(app_state: AppState) -> Router {
                 .nest(
                     "/storage",
                     storage::handlers::create_router(app_state.clone()),
-                ),
+                )
+                .nest("/", topics::handlers::create_router(app_state.clone())),
         )
         .layer((
             SetSensitiveHeadersLayer::new([AUTHORIZATION]),

@@ -1,4 +1,4 @@
-use crate::tests::models::policies::Policies;
+use crate::tests::models::policies::{Permission, Policies};
 use chrono::Utc;
 use std::time::Duration;
 
@@ -21,6 +21,18 @@ pub fn get_admin_policies() -> Policies {
             }
         }
     }))
+}
+
+pub fn build_policies_for_topic_access(topic_name: &str, permissions: Vec<Permission>) -> Policies {
+    let permissions = serde_json::json!(permissions);
+    let policies = Policies::from_value(serde_json::json!({
+        topic_name: {
+            "permissions": permissions,
+            "secrets": {}
+        }
+    }));
+
+    policies
 }
 
 pub fn calculate_expiration_time(ttl: Duration) -> usize {

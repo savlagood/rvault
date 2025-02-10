@@ -5,6 +5,7 @@ mod http;
 mod policies;
 mod state;
 mod storage;
+mod topics;
 
 use anyhow::Context;
 

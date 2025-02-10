@@ -1,7 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use thiserror::Error;
 
 pub const DEFAULT: &str = "__default__";
+
+#[derive(Debug, Error)]
+pub enum PoliciesError {
+    #[error("Do not have enough permissions to perform this operation")]
+    TopicAccessDenied,
+}
 
 #[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
@@ -11,15 +18,6 @@ pub enum Permission {
     Update,
     Delete,
 }
-
-// pub fn check_topic_access_permissions(
-//     policies: &Policies,
-//     required_permission: Permission,
-//     topic_name: &str,
-// ) -> bool {
-//     let topic = policies.get_topic_or_default(topic_name);
-//     topic.permissions.contains(&required_permission)
-// }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Policies(HashMap<String, Topic>);
@@ -32,17 +30,17 @@ impl Policies {
         policies
     }
 
-    // pub fn get_topic(&self, name: &str) -> Option<&Topic> {
-    //     self.0.get(name)
-    // }
+    pub fn get_topic_or_default(&self, name: &str) -> &Topic {
+        self.get_topic(name).unwrap_or(self.get_default_topic())
+    }
+
+    pub fn get_topic(&self, name: &str) -> Option<&Topic> {
+        self.0.get(name)
+    }
 
     pub fn get_topic_mut(&mut self, name: &str) -> Option<&mut Topic> {
         self.0.get_mut(name)
     }
-
-    // pub fn get_topic_or_default(&self, name: &str) -> &Topic {
-    //     self.get_topic(name).unwrap_or(self.get_default_topic())
-    // }
 
     pub fn get_default_topic(&self) -> &Topic {
         self.0
@@ -56,6 +54,20 @@ impl Policies {
         }
 
         self.0.entry(DEFAULT.to_string()).or_insert_with(Topic::new);
+    }
+
+    pub fn ensure_topic_access_permitted(
+        &self,
+        topic_name: &str,
+        required_permission: Permission,
+    ) -> Result<(), PoliciesError> {
+        let topic = self.get_topic_or_default(topic_name);
+
+        if topic.permissions.contains(&required_permission) {
+            Ok(())
+        } else {
+            Err(PoliciesError::TopicAccessDenied)
+        }
     }
 }
 

@@ -1,9 +1,18 @@
 use rand::{rngs::OsRng, RngCore};
+use sha2::{Digest, Sha256};
 
 pub fn generate_256_bit_key() -> Vec<u8> {
     let mut key = vec![0u8; 32];
     OsRng.fill_bytes(&mut key);
     key
+}
+
+pub fn claculate_string_hash_base64(data: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+
+    let hash = hasher.finalize();
+    base64::encode(&hash)
 }
 
 pub mod base64 {
