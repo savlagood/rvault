@@ -19,7 +19,7 @@ fn test_pass_all_shared_keys() {
 
         let request_body = serde_json::json!(shared_keys);
         let response = client
-            .make_admin_request(routes::UNSEAL_STORAGE, request_body)
+            .make_admin_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -34,7 +34,7 @@ fn test_unauthorized() {
 
         let request_body = serde_json::json!(shared_keys);
         let response = client
-            .make_request(routes::UNSEAL_STORAGE, request_body)
+            .make_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
@@ -51,7 +51,7 @@ fn test_unseal_with_user_token() {
         let request_body = serde_json::json!(shared_keys);
         let response = client
             .make_user_request(
-                routes::UNSEAL_STORAGE,
+                &routes::UNSEAL_STORAGE_ENDPOINT,
                 SIMPLE_USER_POLICIES.clone(),
                 request_body,
             )
@@ -71,7 +71,7 @@ fn test_unseal_storage_when_storage_state_is_uninitialized() {
         let request_body = serde_json::json!(shared_keys);
 
         let response: reqwest::Response = client
-            .make_admin_request(routes::UNSEAL_STORAGE, request_body)
+            .make_admin_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -91,7 +91,7 @@ fn test_unseal_storage_when_storage_state_is_unsealed() {
         // 2nd unseal with check response
         let request_body = serde_json::json!(shared_keys);
         let response = client
-            .make_admin_request(routes::UNSEAL_STORAGE, request_body)
+            .make_admin_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -109,7 +109,7 @@ fn test_pass_empty_shared_keys_array() {
         let request_body = serde_json::json!(shared_keys);
 
         let response = client
-            .make_admin_request(routes::UNSEAL_STORAGE, request_body)
+            .make_admin_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -127,7 +127,7 @@ fn test_pass_minimum_necessary_number_of_shared_keys() {
         let request_body = serde_json::json!(truncated_shared_keys);
 
         let response = client
-            .make_admin_request(routes::UNSEAL_STORAGE, request_body)
+            .make_admin_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -145,7 +145,7 @@ fn test_pass_smaller_number_of_shared_keys_than_required() {
         let request_body = serde_json::json!(truncated_shared_keys);
 
         let response = client
-            .make_admin_request(routes::UNSEAL_STORAGE, request_body)
+            .make_admin_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -164,7 +164,7 @@ fn test_pass_larger_number_of_shared_keys_than_required() {
         let request_body = serde_json::json!(truncated_shared_keys);
 
         let response = client
-            .make_admin_request(routes::UNSEAL_STORAGE, request_body)
+            .make_admin_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);

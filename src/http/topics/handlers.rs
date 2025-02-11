@@ -1,15 +1,13 @@
 use crate::{
-    crypto,
-    http::{errors::ResponseError, jwt_tokens::AccessTokenClaims},
+    http::{errors::ResponseError, jwt_tokens::AccessTokenClaims, utils},
     policies::Permission,
     state::AppState,
-    storage::StorageState,
-    topics::Topic,
+    topics,
 };
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use tracing::info;
@@ -29,15 +27,42 @@ mod models {
             Self { key }
         }
     }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct TopicNames {
+        topics: Vec<String>,
+    }
+
+    impl TopicNames {
+        pub fn new(names: Vec<String>) -> Self {
+            Self { topics: names }
+        }
+    }
 }
 
 pub fn create_router(app_state: AppState) -> Router {
     Router::new()
-        .route("/topics/:topic_name", post(create_new_topic_handler))
+        .route("/topics", get(get_list_of_topics_handler))
+        .route("/topics/:topic_name", post(create_topic_handler))
         .with_state(app_state)
 }
 
-async fn create_new_topic_handler(
+async fn get_list_of_topics_handler(
+    claims: AccessTokenClaims,
+    State(state): State<AppState>,
+) -> Result<Json<models::TopicNames>, ResponseError> {
+    // checks
+    utils::is_admin(&claims.token_type)?;
+    utils::ensure_storage_is_unsealed(state.clone()).await?;
+
+    // action
+    let topic_names = topics::fetch_topic_names(state).await?;
+    let topic_names = models::TopicNames::new(topic_names);
+
+    Ok(Json(topic_names))
+}
+
+async fn create_topic_handler(
     claims: AccessTokenClaims,
     Path(topic_name): Path<String>,
     State(state): State<AppState>,
@@ -46,49 +71,13 @@ async fn create_new_topic_handler(
     let policies = claims.policies;
     policies.ensure_topic_access_permitted(topic_name.as_str(), Permission::Create)?;
 
-    {
-        let storage = state.get_storage_read().await;
-        storage.ensure_state_is(StorageState::Unsealed)?;
-    }
-
-    ensure_topic_name_valid(topic_name.as_str())?;
+    utils::ensure_storage_is_unsealed(state.clone()).await?;
+    utils::ensure_topic_name_valid(topic_name.as_str())?;
 
     // action
-    let hashed_topic_name = crypto::claculate_string_hash_base64(&topic_name);
-    let topic_key = create_topic(hashed_topic_name, state).await?;
+    let topic_key_bytes = topics::create_topic(topic_name.clone(), state).await?;
+    let topic_key = models::TopicEncryptionKey::from_key_bytes(&topic_key_bytes);
 
     info!("Topic '{}' successfully created", topic_name);
     Ok((StatusCode::CREATED, Json(topic_key)))
-}
-
-async fn create_topic(
-    name: String,
-    state: AppState,
-) -> Result<models::TopicEncryptionKey, ResponseError> {
-    let storage = state.get_storage_read().await;
-
-    let storage_key = storage.get_encryption_key()?;
-    let topic_key = crypto::generate_256_bit_key();
-
-    let topic = Topic::new(name, storage_key, &topic_key)?;
-
-    let db = state.get_db();
-    db.create_topic(topic).await?;
-
-    let topic_key = models::TopicEncryptionKey::from_key_bytes(&topic_key);
-    Ok(topic_key)
-}
-
-fn ensure_topic_name_valid(topic_name: &str) -> Result<(), ResponseError> {
-    if validate_topic_name(topic_name) {
-        Ok(())
-    } else {
-        Err(ResponseError::InvalidTopicName)
-    }
-}
-
-fn validate_topic_name(topic_name: &str) -> bool {
-    topic_name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_')
 }

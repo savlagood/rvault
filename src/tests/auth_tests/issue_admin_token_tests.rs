@@ -21,7 +21,7 @@ fn test_issue_token() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_request(routes::ISSUE_ADMIN_TOKEN_PATH, request_body)
+            .make_request(&routes::ISSUE_ADMIN_TOKEN_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -44,7 +44,7 @@ fn test_invalid_root_token() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_request(routes::ISSUE_ADMIN_TOKEN_PATH, request_body)
+            .make_request(&routes::ISSUE_ADMIN_TOKEN_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::FORBIDDEN;
@@ -60,7 +60,7 @@ fn test_empty_root_token() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_request(routes::ISSUE_ADMIN_TOKEN_PATH, request_body)
+            .make_request(&routes::ISSUE_ADMIN_TOKEN_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::FORBIDDEN;

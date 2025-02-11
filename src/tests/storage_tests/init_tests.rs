@@ -20,7 +20,7 @@ fn test_init_ok() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::INIT_STORAGE, request_body)
+            .make_admin_request(&routes::INIT_STORAGE_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -46,7 +46,7 @@ fn test_unauthorized() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_request(routes::INIT_STORAGE, request_body)
+            .make_request(&routes::INIT_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
@@ -64,7 +64,7 @@ fn test_init_with_user_token() {
 
         let response = client
             .make_user_request(
-                routes::INIT_STORAGE,
+                &routes::INIT_STORAGE_ENDPOINT,
                 SIMPLE_USER_POLICIES.clone(),
                 request_body,
             )
@@ -86,7 +86,7 @@ fn test_init_storage_when_storage_state_is_sealed() {
         storage::from_uninitialized_to_sealed(&client).await;
 
         let response = client
-            .make_admin_request(routes::INIT_STORAGE, request_body)
+            .make_admin_request(&routes::INIT_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -105,7 +105,7 @@ fn test_init_storage_when_storage_state_is_unsealed() {
         storage::from_uninitialized_to_unsealed(&client).await;
 
         let response = client
-            .make_admin_request(routes::INIT_STORAGE, request_body)
+            .make_admin_request(&routes::INIT_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -125,7 +125,7 @@ fn test_threshold_and_total_keys_equals() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::INIT_STORAGE, request_body)
+            .make_admin_request(&routes::INIT_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -145,7 +145,7 @@ fn test_threshold_greater_than_total_keys() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::INIT_STORAGE, request_body)
+            .make_admin_request(&routes::INIT_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -165,7 +165,7 @@ fn test_one_threshold() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::INIT_STORAGE, request_body)
+            .make_admin_request(&routes::INIT_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -185,7 +185,7 @@ fn test_zero_threshold() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::INIT_STORAGE, request_body)
+            .make_admin_request(&routes::INIT_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;

@@ -1,9 +1,6 @@
 use crate::{
     crypto::shared_keys::{SharedKeys, SharedKeysSettings},
-    http::{
-        errors::ResponseError,
-        jwt_tokens::{AccessTokenClaims, TokenType},
-    },
+    http::{errors::ResponseError, jwt_tokens::AccessTokenClaims, utils},
     state::AppState,
 };
 use axum::{extract::State, routing::post, Json, Router};
@@ -21,7 +18,7 @@ async fn init_storage_handler(
     State(state): State<AppState>,
     Json(shared_keys_settings): Json<SharedKeysSettings>,
 ) -> Result<Json<SharedKeys>, ResponseError> {
-    is_admin(&claims.token_type)?;
+    utils::is_admin(&claims.token_type)?;
 
     let mut storage = state.get_storage_write().await;
     let shared_keys = storage.initialize(shared_keys_settings).await?;
@@ -34,7 +31,7 @@ async fn unseal_storage_handler(
     State(state): State<AppState>,
     Json(shared_keys): Json<SharedKeys>,
 ) -> Result<(), ResponseError> {
-    is_admin(&claims.token_type)?;
+    utils::is_admin(&claims.token_type)?;
 
     let mut storage = state.get_storage_write().await;
     storage.unseal(shared_keys).await?;
@@ -46,18 +43,10 @@ async fn seal_storage_handler(
     claims: AccessTokenClaims,
     State(state): State<AppState>,
 ) -> Result<(), ResponseError> {
-    is_admin(&claims.token_type)?;
+    utils::is_admin(&claims.token_type)?;
 
     let mut storage = state.get_storage_write().await;
     storage.seal().await?;
-
-    Ok(())
-}
-
-fn is_admin(token_type: &TokenType) -> Result<(), ResponseError> {
-    if !matches!(token_type, TokenType::Admin) {
-        return Err(ResponseError::AccessDenied);
-    }
 
     Ok(())
 }

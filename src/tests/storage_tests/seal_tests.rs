@@ -19,7 +19,7 @@ fn test_seal_ok() {
 
         let request_body = serde_json::json!({});
         let response = client
-            .make_admin_request(routes::SEAL_STORAGE, request_body)
+            .make_admin_request(&routes::SEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -35,7 +35,7 @@ fn test_unauthorized() {
 
         let request_body = serde_json::json!({});
         let response = client
-            .make_request(routes::SEAL_STORAGE, request_body)
+            .make_request(&routes::SEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
@@ -53,7 +53,7 @@ fn test_seal_with_user_token() {
         let request_body = serde_json::json!({});
         let response = client
             .make_user_request(
-                routes::SEAL_STORAGE,
+                &routes::SEAL_STORAGE_ENDPOINT,
                 SIMPLE_USER_POLICIES.clone(),
                 request_body,
             )
@@ -71,7 +71,7 @@ fn test_seal_storage_when_storage_state_is_uninitialized() {
 
         let request_body = serde_json::json!({});
         let response = client
-            .make_admin_request(routes::SEAL_STORAGE, request_body)
+            .make_admin_request(&routes::SEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
@@ -88,7 +88,7 @@ fn test_seal_storage_when_storage_state_is_sealed() {
 
         let request_body = serde_json::json!({});
         let response = client
-            .make_admin_request(routes::SEAL_STORAGE, request_body)
+            .make_admin_request(&routes::SEAL_STORAGE_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;

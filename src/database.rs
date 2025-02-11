@@ -1,5 +1,6 @@
 use crate::{storage::StorageDto, topics::Topic};
 use anyhow::{Context, Result};
+use futures::TryStreamExt;
 use mongodb::{bson, Client, Collection, Database};
 use std::sync::Arc;
 use thiserror::Error;
@@ -67,11 +68,25 @@ impl MongoDb {
         Ok(())
     }
 
-    pub async fn create_topic(&self, topic: Topic) -> Result<(), DatabaseError> {
-        let topic_name = topic.name.as_str();
+    pub async fn fetch_list_of_topics_encrypted_names(&self) -> Result<Vec<String>, DatabaseError> {
         let collection = self.get_topics_collection().await;
 
-        let filter = bson::doc! { "name": topic_name };
+        let filter = bson::doc! {};
+        let mut cursor = collection.find(filter).await?;
+
+        let mut topics = Vec::new();
+        while let Some(topic_document) = cursor.try_next().await? {
+            topics.push(topic_document.encrypted_name);
+        }
+
+        Ok(topics)
+    }
+
+    pub async fn create_topic(&self, topic: Topic) -> Result<(), DatabaseError> {
+        let hashed_topic_name = topic.hashed_name.as_str();
+        let collection = self.get_topics_collection().await;
+
+        let filter = bson::doc! { "hashed_name": hashed_topic_name };
         if collection.find_one(filter).await?.is_some() {
             return Err(DatabaseError::TopicAlreadyExists);
         }

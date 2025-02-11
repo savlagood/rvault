@@ -1,6 +1,6 @@
 use crate::{
-    database::DatabaseError, http::jwt_tokens::TokenError, policies::PoliciesError,
-    storage::StorageError, topics::TopicsError,
+    http::jwt_tokens::TokenError, policies::PoliciesError, storage::StorageError,
+    topics::TopicsError,
 };
 use axum::{
     http::StatusCode,
@@ -47,9 +47,6 @@ pub enum ResponseError {
 
     #[error(transparent)]
     Policies(#[from] PoliciesError),
-
-    #[error(transparent)]
-    Database(#[from] DatabaseError),
 }
 
 impl IntoResponse for ResponseError {
@@ -103,20 +100,21 @@ impl IntoResponse for ResponseError {
                     )
                 }
                 TopicsError::InvalidTopicEncryptionKey => (StatusCode::FORBIDDEN, err.to_string()),
+                TopicsError::TopicAlreadyExists => (StatusCode::CONFLICT, err.to_string()),
+                TopicsError::TopicCorrupted => {
+                    error!("Topic data has been corrupted: {}", err.to_string());
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        String::from("Topic's data has been corrupted"),
+                    )
+                }
+                TopicsError::Database(err) => {
+                    error!("Error during database operation : {err:?}");
+                    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                }
             },
 
             ResponseError::Policies(err) => (StatusCode::FORBIDDEN, err.to_string()),
-
-            ResponseError::Database(err) => match err {
-                DatabaseError::TopicAlreadyExists => (StatusCode::CONFLICT, err.to_string()),
-                _ => {
-                    error!("Internal database error: {err:?}");
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Internal database error".to_string(),
-                    )
-                }
-            },
         };
 
         let body = Json(ErrorMessage::with_message(message));

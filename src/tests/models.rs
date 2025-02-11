@@ -177,4 +177,19 @@ pub mod topics {
                 .expect("Error during parsing token pair from response")
         }
     }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct TopicsNames {
+        #[serde(rename = "topics")]
+        pub names: Vec<String>,
+    }
+
+    impl TopicsNames {
+        pub async fn from_response(response: Response) -> Self {
+            response
+                .json::<Self>()
+                .await
+                .expect("Error during parsing topics names from response")
+        }
+    }
 }

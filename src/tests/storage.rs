@@ -16,7 +16,7 @@ pub async fn init_and_get_shared_keys(client: &ClientWithServer) -> SharedKeys {
     });
 
     let response = client
-        .make_admin_request(routes::INIT_STORAGE, shared_keys_settings_request)
+        .make_admin_request(&routes::INIT_STORAGE_ENDPOINT, shared_keys_settings_request)
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -31,7 +31,7 @@ pub async fn init_and_get_shared_keys(client: &ClientWithServer) -> SharedKeys {
 pub async fn unseal(client: &ClientWithServer, shared_keys: &SharedKeys) {
     let request_body = serde_json::json!(shared_keys);
     let response = client
-        .make_admin_request(routes::UNSEAL_STORAGE, request_body)
+        .make_admin_request(&routes::UNSEAL_STORAGE_ENDPOINT, request_body)
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);

@@ -3,7 +3,8 @@ use crate::{http::server::create_router, state::AppState};
 use crate::tests::{
     consts::ENV_ROOT_TOKEN,
     models::{jwt_tokens::TokenPair, policies::Policies},
-    routes, utils,
+    routes::{self, PathWithMethod, RequestMethod},
+    utils,
 };
 use once_cell::sync::Lazy;
 use reqwest::{Client, Response};
@@ -30,36 +31,56 @@ impl ClientWithServer {
         }
     }
 
-    pub async fn make_request(&self, path: &str, body: Value) -> Response {
-        let url = routes::build_url(path, self.port);
-        self.client
-            .post(url)
+    pub async fn make_request(&self, endpoint: &PathWithMethod, body: Value) -> Response {
+        let url = routes::build_url(&endpoint.path, self.port);
+
+        let request = match endpoint.method {
+            RequestMethod::GET => self.client.get(url),
+            RequestMethod::POST => self.client.post(url),
+        };
+
+        request
             .json(&body)
             .send()
             .await
             .expect("Failed to send request")
     }
 
-    pub async fn make_admin_request(&self, path: &str, body: Value) -> Response {
+    pub async fn make_admin_request(&self, endpoint: &PathWithMethod, body: Value) -> Response {
         let token_pair = self.fetch_admin_token_pair().await;
         let admin_access_token = token_pair.access_token;
 
-        self.make_authorized_request(path, body, &admin_access_token)
+        self.make_authorized_request(endpoint, body, &admin_access_token)
             .await
     }
 
-    pub async fn make_user_request(&self, path: &str, policies: Policies, body: Value) -> Response {
+    pub async fn make_user_request(
+        &self,
+        endpoint: &PathWithMethod,
+        policies: Policies,
+        body: Value,
+    ) -> Response {
         let token_pair = self.fetch_user_token_pair(policies).await;
         let user_access_token = token_pair.access_token;
 
-        self.make_authorized_request(path, body, &user_access_token)
+        self.make_authorized_request(endpoint, body, &user_access_token)
             .await
     }
 
-    pub async fn make_authorized_request(&self, path: &str, body: Value, token: &str) -> Response {
-        let url = routes::build_url(path, self.port);
-        self.client
-            .post(url)
+    pub async fn make_authorized_request(
+        &self,
+        endpoint: &PathWithMethod,
+        body: Value,
+        token: &str,
+    ) -> Response {
+        let url = routes::build_url(&endpoint.path, self.port);
+
+        let request = match endpoint.method {
+            RequestMethod::GET => self.client.get(url),
+            RequestMethod::POST => self.client.post(url),
+        };
+
+        request
             .json(&body)
             .bearer_auth(token)
             .send()
@@ -74,7 +95,7 @@ impl ClientWithServer {
         });
 
         let response = self
-            .make_request(routes::ISSUE_ADMIN_TOKEN_PATH, request_body)
+            .make_request(&routes::ISSUE_ADMIN_TOKEN_ENDPOINT, request_body)
             .await;
 
         TokenPair::from_response(response).await
@@ -83,7 +104,7 @@ impl ClientWithServer {
     pub async fn fetch_user_token_pair(&self, policies: Policies) -> TokenPair {
         let request_body = serde_json::json!(policies);
         let response = self
-            .make_admin_request(routes::ISSUE_USER_TOKEN_PATH, request_body)
+            .make_admin_request(&routes::ISSUE_USER_TOKEN_ENDPOINT, request_body)
             .await;
 
         TokenPair::from_response(response).await

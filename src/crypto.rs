@@ -7,12 +7,17 @@ pub fn generate_256_bit_key() -> Vec<u8> {
     key
 }
 
-pub fn claculate_string_hash_base64(data: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-
-    let hash = hasher.finalize();
+pub fn hash_string_base64(data: &str) -> String {
+    let hash = Sha256::digest(data.as_bytes());
     base64::encode(&hash)
+}
+
+pub fn encrypt_string_base64(data: &str, key: &[u8]) -> Result<String, aes::AesError> {
+    let cipher = aes::Aes256Cipher::new(key)?;
+    let encrypted_data_bytes = cipher.encrypt(data.as_bytes())?;
+    let encrypted_data = base64::encode(&encrypted_data_bytes);
+
+    Ok(encrypted_data)
 }
 
 pub mod base64 {

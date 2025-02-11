@@ -22,7 +22,7 @@ fn test_refresh_admin_token_pair() {
 
         let request_body = serde_json::json!(original_admin_token_pair);
         let response = client
-            .make_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -41,7 +41,7 @@ fn test_refresh_user_token_pair() {
 
         let request_body = serde_json::json!(original_admin_token_pair);
         let response = client
-            .make_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -65,7 +65,7 @@ fn test_access_and_refresh_tokens_still_valid() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -85,7 +85,7 @@ fn test_empty_tokens() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_admin_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
@@ -105,7 +105,7 @@ fn test_invalid_tokens() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_admin_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
@@ -128,7 +128,7 @@ fn test_access_token_expired() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_admin_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -151,7 +151,7 @@ fn test_refresh_token_expired() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_admin_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
@@ -174,7 +174,7 @@ fn test_both_tokens_expired() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_admin_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
@@ -197,7 +197,7 @@ fn test_access_token_not_linked_to_refresh_token() {
         let request_body = serde_json::json!(combined_token_pair);
 
         let response = client
-            .make_admin_request(routes::REFRESH_TOKEN_PAIR_PATH, request_body)
+            .make_admin_request(&routes::REFRESH_TOKEN_PAIR_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;

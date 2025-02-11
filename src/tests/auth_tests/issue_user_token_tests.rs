@@ -53,7 +53,7 @@ fn test_issue_token() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::ISSUE_USER_TOKEN_PATH, request_body)
+            .make_admin_request(&routes::ISSUE_USER_TOKEN_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -70,7 +70,7 @@ fn test_unauthorized() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_request(routes::ISSUE_USER_TOKEN_PATH, request_body)
+            .make_request(&routes::ISSUE_USER_TOKEN_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::UNAUTHORIZED;
@@ -99,7 +99,7 @@ fn test_without_policies() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::ISSUE_USER_TOKEN_PATH, request_body)
+            .make_admin_request(&routes::ISSUE_USER_TOKEN_ENDPOINT, request_body)
             .await;
 
         assert_eq!(response.status(), StatusCode::OK);
@@ -123,7 +123,7 @@ fn test_impossibility_to_set_global_permissions() {
         let client = ClientWithServer::new().await;
 
         let response = client
-            .make_admin_request(routes::ISSUE_USER_TOKEN_PATH, request_body)
+            .make_admin_request(&routes::ISSUE_USER_TOKEN_ENDPOINT, request_body)
             .await;
 
         let expected_status_code = StatusCode::BAD_REQUEST;
