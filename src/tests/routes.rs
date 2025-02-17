@@ -7,8 +7,6 @@ const HOST: &str = "localhost";
 pub enum RequestMethod {
     GET,
     POST,
-    // PUT,
-    // DELETE,
 }
 
 #[derive(Clone)]
@@ -60,7 +58,14 @@ lazy_static! {
 // builders
 pub fn build_create_topic_path(topic_name: &str) -> PathWithMethod {
     PathWithMethod {
-        path: format!("api/topics/{}", topic_name),
+        path: format!("api/topics/{topic_name}"),
+        method: RequestMethod::POST,
+    }
+}
+
+pub fn build_create_secret_path(topic_name: &str, secret_name: &str) -> PathWithMethod {
+    PathWithMethod {
+        path: format!("api/topics/{topic_name}/secrets/{secret_name}"),
         method: RequestMethod::POST,
     }
 }

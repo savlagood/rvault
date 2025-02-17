@@ -7,5 +7,6 @@ mod storage;
 mod utils;
 
 mod auth_tests;
+mod secrets_tests;
 mod storage_tests;
 mod topics_tests;

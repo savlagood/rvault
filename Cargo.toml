@@ -12,6 +12,7 @@ base64 = "0.22.1"
 chrono = { version = "0.4.39", features = ["serde", "clock"] }
 dotenv = "0.15.0"
 futures = "0.3.31"
+hkdf = "0.12.4"
 jsonwebtoken = "9.3.0"
 mongodb = "3.2.0"
 once_cell = "1.20.2"

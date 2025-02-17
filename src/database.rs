@@ -1,8 +1,9 @@
-use crate::{storage::StorageDto, topics::Topic};
+use crate::{secrets::SecretDto, storage::StorageDto, topics::TopicDto};
 use anyhow::{Context, Result};
 use futures::TryStreamExt;
 use mongodb::{bson, Client, Collection, Database};
-use std::sync::Arc;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{fmt::Debug, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use tracing::info;
@@ -14,7 +15,7 @@ const DB_NAME: &str = "test_rvault";
 
 const STORAGE_COLLECTION_NAME: &str = "storage";
 const TOPICS_COLLECTION_NAME: &str = "topics";
-// const SECRETS_COLLECTION_NAME: &str = "secrets";
+const SECRETS_COLLECTION_NAME: &str = "secrets";
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -24,8 +25,14 @@ pub enum DatabaseError {
     #[error("Failed to serialize/deserialize object into/from bson::doc")]
     RepresentationError(#[from] bson::ser::Error),
 
-    #[error("Topic with such name already exists")]
-    TopicAlreadyExists,
+    #[error("Document with such name already exists")]
+    AlreadyExists,
+
+    #[error("Duplicate")]
+    Duplicate,
+
+    #[error("Not found")]
+    NotFound,
 }
 
 pub struct MongoDb {
@@ -68,7 +75,7 @@ impl MongoDb {
         Ok(())
     }
 
-    pub async fn fetch_list_of_topics_encrypted_names(&self) -> Result<Vec<String>, DatabaseError> {
+    pub async fn fetch_topic_names(&self) -> Result<Vec<String>, DatabaseError> {
         let collection = self.get_topics_collection().await;
 
         let filter = bson::doc! {};
@@ -82,13 +89,12 @@ impl MongoDb {
         Ok(topics)
     }
 
-    pub async fn create_topic(&self, topic: Topic) -> Result<(), DatabaseError> {
-        let hashed_topic_name = topic.hashed_name.as_str();
+    pub async fn create_topic(&self, topic: TopicDto) -> Result<(), DatabaseError> {
         let collection = self.get_topics_collection().await;
 
-        let filter = bson::doc! { "hashed_name": hashed_topic_name };
+        let filter = bson::doc! { "hashed_name": topic.hashed_name.as_str() };
         if collection.find_one(filter).await?.is_some() {
-            return Err(DatabaseError::TopicAlreadyExists);
+            return Err(DatabaseError::AlreadyExists);
         }
 
         collection.insert_one(topic).await?;
@@ -96,19 +102,69 @@ impl MongoDb {
         Ok(())
     }
 
-    // pub async fn read_topic(&self) {}
+    pub async fn read_topic(&self, hashed_name: &str) -> Result<Option<TopicDto>, DatabaseError> {
+        let collection = self.get_topics_collection().await;
 
-    // pub async fn update_topic(&self) {}
+        let filter = bson::doc! { "hashed_name": hashed_name };
+        let mut cursor = collection.find(filter).await?;
 
-    // pub async fn delete_topic(&self) {}
+        let first_doc = match cursor.try_next().await? {
+            Some(doc) => doc,
+            None => return Ok(None),
+        };
 
-    async fn get_storage_collection(&self) -> Collection<StorageDto> {
-        let db = self.db.lock().await;
-        db.collection::<StorageDto>(STORAGE_COLLECTION_NAME)
+        if cursor.try_next().await?.is_some() {
+            return Err(DatabaseError::Duplicate);
+        }
+
+        Ok(Some(first_doc))
     }
 
-    async fn get_topics_collection(&self) -> Collection<Topic> {
+    pub async fn update_topic(&self, topic: TopicDto) -> Result<(), DatabaseError> {
+        let collection = self.get_topics_collection().await;
+
+        let filter = bson::doc! { "hashed_name": topic.hashed_name.as_str() };
+        let update = bson::to_document(&topic).map(|doc| bson::doc! { "$set": doc })?;
+
+        let result = collection.update_one(filter, update).await?;
+
+        if result.matched_count == 0 {
+            return Err(DatabaseError::NotFound);
+        }
+
+        Ok(())
+    }
+
+    pub async fn create_secret(&self, secret: SecretDto) -> Result<(), DatabaseError> {
+        let collection = self.get_secrets_collection().await;
+
+        let filter = bson::doc! { "hashed_name": secret.hashed_name.as_str() };
+        if collection.find_one(filter).await?.is_some() {
+            return Err(DatabaseError::AlreadyExists);
+        }
+
+        collection.insert_one(secret).await?;
+
+        Ok(())
+    }
+
+    async fn get_storage_collection(&self) -> Collection<StorageDto> {
+        self.get_collection(STORAGE_COLLECTION_NAME).await
+    }
+
+    async fn get_topics_collection(&self) -> Collection<TopicDto> {
+        self.get_collection(TOPICS_COLLECTION_NAME).await
+    }
+
+    async fn get_secrets_collection(&self) -> Collection<SecretDto> {
+        self.get_collection(SECRETS_COLLECTION_NAME).await
+    }
+
+    async fn get_collection<T>(&self, collection_name: &str) -> Collection<T>
+    where
+        T: Serialize + DeserializeOwned + Send + Sync + Unpin,
+    {
         let db = self.db.lock().await;
-        db.collection::<Topic>(TOPICS_COLLECTION_NAME)
+        db.collection::<T>(collection_name)
     }
 }

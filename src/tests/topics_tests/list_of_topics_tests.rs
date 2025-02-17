@@ -33,7 +33,12 @@ fn empty_list_test() {
 
 #[test]
 fn many_topics_test() {
-    let request_body = serde_json::json!({});
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
+
     let expected_topic_names = vec![
         String::from("topic1"),
         String::from("some_another_topic_name"),

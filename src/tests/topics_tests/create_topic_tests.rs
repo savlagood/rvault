@@ -1,8 +1,9 @@
 use crate::tests::{
     assertions::{
-        error_message::assert_error_response, topics::assert_response_contains_valid_topic_key,
+        assert_empty_response, error_message::assert_error_response,
+        topics::assert_response_contains_valid_topic_key,
     },
-    models::policies::Permission,
+    models::{policies::Permission, topics::TopicEncryptionKey},
     routes,
     server::{use_app, ClientWithServer},
     storage, utils,
@@ -18,7 +19,11 @@ const VALID_TOPIC_NAME: &str = "Some_validTopicName_123";
 fn test_create_new_topic_as_admin() {
     let topic_name = VALID_TOPIC_NAME;
 
-    let request_body = serde_json::json!({});
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -40,8 +45,11 @@ fn test_create_new_topic_as_user() {
     let permissions = vec![Permission::Create];
     let policies = utils::build_policies_for_topic_access(topic_name, permissions);
 
-    let request_body = serde_json::json!({});
-
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
     use_app(async move {
         let client = ClientWithServer::new().await;
         storage::from_uninitialized_to_unsealed(&client).await;
@@ -66,8 +74,11 @@ fn test_create_new_topic_as_user() {
 fn test_topic_name_contains_invalid_characters() {
     let topic_name = "invalid_ $topic + name!";
 
-    let request_body = serde_json::json!({});
-
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
     use_app(async move {
         let client = ClientWithServer::new().await;
         storage::from_uninitialized_to_unsealed(&client).await;
@@ -81,6 +92,56 @@ fn test_topic_name_contains_invalid_characters() {
 }
 
 #[test]
+fn test_create_with_provided_mode() {
+    let topic_name = VALID_TOPIC_NAME;
+
+    let expected_topic_key = String::from("Some topic password 42");
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "provided",
+            "key": expected_topic_key
+        }
+    });
+
+    use_app(async move {
+        let client = ClientWithServer::new().await;
+        storage::from_uninitialized_to_unsealed(&client).await;
+
+        let response = client
+            .make_admin_request(&routes::build_create_topic_path(topic_name), request_body)
+            .await;
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let topic_key = TopicEncryptionKey::from_response(response).await;
+        assert_eq!(topic_key.value, expected_topic_key);
+    })
+}
+
+#[test]
+fn test_create_with_none_mode() {
+    let topic_name = VALID_TOPIC_NAME;
+
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "none"
+        }
+    });
+
+    use_app(async move {
+        let client = ClientWithServer::new().await;
+        storage::from_uninitialized_to_unsealed(&client).await;
+
+        let response = client
+            .make_admin_request(&routes::build_create_topic_path(topic_name), request_body)
+            .await;
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_empty_response(response).await;
+    })
+}
+
+#[test]
 fn test_not_enough_permissions_to_create_topic() {
     let topic_name = VALID_TOPIC_NAME;
 
@@ -88,7 +149,11 @@ fn test_not_enough_permissions_to_create_topic() {
     let permissions = vec![Permission::Read];
     let policies = utils::build_policies_for_topic_access(topic_name, permissions);
 
-    let request_body = serde_json::json!({});
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -113,7 +178,11 @@ fn test_not_enough_permissions_to_create_topic() {
 fn test_topic_already_exists() {
     let topic_name = VALID_TOPIC_NAME;
 
-    let request_body = serde_json::json!({});
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -144,7 +213,11 @@ fn test_attempt_to_create_existing_topic_without_permission_to_do() {
     let permissions = vec![Permission::Read];
     let policies = utils::build_policies_for_topic_access(topic_name, permissions);
 
-    let request_body = serde_json::json!({});
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -179,7 +252,11 @@ fn test_attempt_to_create_existing_topic_without_permission_to_do() {
 fn test_create_topic_when_storage_is_sealed() {
     let topic_name = VALID_TOPIC_NAME;
 
-    let request_body = serde_json::json!({});
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
 
     use_app(async move {
         let client = ClientWithServer::new().await;
@@ -197,7 +274,11 @@ fn test_create_topic_when_storage_is_sealed() {
 fn test_create_topic_when_storage_is_uninitialized() {
     let topic_name = VALID_TOPIC_NAME;
 
-    let request_body = serde_json::json!({});
+    let request_body = serde_json::json!({
+        "encryption": {
+            "mode": "generate"
+        }
+    });
 
     use_app(async move {
         let client = ClientWithServer::new().await;

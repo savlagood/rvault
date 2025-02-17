@@ -1,6 +1,8 @@
 pub mod auth;
 pub mod errors;
+pub mod headers;
 pub mod jwt_tokens;
+pub mod secrets;
 pub mod server;
 pub mod storage;
 pub mod topics;

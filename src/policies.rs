@@ -69,6 +69,21 @@ impl Policies {
             Err(PoliciesError::TopicAccessDenied)
         }
     }
+
+    pub fn ensure_secret_access_permitted(
+        &self,
+        topic_name: &str,
+        secret_name: &str,
+        required_permission: Permission,
+    ) -> Result<(), PoliciesError> {
+        let topic = self.get_topic_or_default(topic_name);
+
+        if !topic.permissions.contains(&Permission::Update) {
+            return Err(PoliciesError::TopicAccessDenied);
+        }
+
+        topic.ensure_secret_access_permitted(secret_name, required_permission)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -88,6 +103,26 @@ impl Topic {
         topic
     }
 
+    fn ensure_secret_access_permitted(
+        &self,
+        secret_name: &str,
+        required_permission: Permission,
+    ) -> Result<(), PoliciesError> {
+        let secret = self.get_secret_or_default(secret_name);
+
+        if secret.contains(&required_permission) {
+            Ok(())
+        } else {
+            Err(PoliciesError::TopicAccessDenied)
+        }
+    }
+
+    fn get_secret_or_default(&self, secret_name: &str) -> &HashSet<Permission> {
+        self.secrets
+            .get(secret_name)
+            .unwrap_or(self.get_default_secret())
+    }
+
     pub fn get_default_secret(&self) -> &HashSet<Permission> {
         self.secrets
             .get(DEFAULT)
@@ -97,10 +132,6 @@ impl Topic {
     fn initialize_defaults(&mut self) {
         self.secrets.entry(DEFAULT.to_string()).or_default();
     }
-
-    // pub fn add_permissions(&mut self, permissions: &[Permission]) {
-    //     self.permissions.extend(permissions);
-    // }
 
     pub fn set_permissions(&mut self, permissions: &[Permission]) {
         self.permissions = permissions.iter().cloned().collect();

@@ -2,12 +2,12 @@ use crate::{http::server::create_router, state::AppState};
 
 use crate::tests::{
     consts::ENV_ROOT_TOKEN,
-    models::{jwt_tokens::TokenPair, policies::Policies},
+    models::{jwt_tokens::TokenPair, policies::Policies, topics::TopicEncryptionKey},
     routes::{self, PathWithMethod, RequestMethod},
     utils,
 };
 use once_cell::sync::Lazy;
-use reqwest::{Client, Response};
+use reqwest::{header::HeaderMap, Client, Response};
 use serde_json::Value;
 use tokio::{net::TcpListener, runtime::Runtime, task::JoinHandle};
 
@@ -54,6 +54,19 @@ impl ClientWithServer {
             .await
     }
 
+    pub async fn make_admin_request_with_headers(
+        &self,
+        endpoint: &PathWithMethod,
+        body: Value,
+        headers: HeaderMap,
+    ) -> Response {
+        let token_pair = self.fetch_admin_token_pair().await;
+        let admin_access_token = token_pair.access_token;
+
+        self.make_authorized_request_with_headers(endpoint, body, &admin_access_token, headers)
+            .await
+    }
+
     pub async fn make_user_request(
         &self,
         endpoint: &PathWithMethod,
@@ -88,6 +101,29 @@ impl ClientWithServer {
             .expect("Failed to send request")
     }
 
+    pub async fn make_authorized_request_with_headers(
+        &self,
+        endpoint: &PathWithMethod,
+        body: Value,
+        token: &str,
+        headers: HeaderMap,
+    ) -> Response {
+        let url = routes::build_url(&endpoint.path, self.port);
+
+        let request = match endpoint.method {
+            RequestMethod::GET => self.client.get(url),
+            RequestMethod::POST => self.client.post(url),
+        };
+
+        request
+            .headers(headers)
+            .json(&body)
+            .bearer_auth(token)
+            .send()
+            .await
+            .expect("Failed to send request")
+    }
+
     pub async fn fetch_admin_token_pair(&self) -> TokenPair {
         let root_token = utils::get_env_var(ENV_ROOT_TOKEN);
         let request_body = serde_json::json!({
@@ -108,6 +144,31 @@ impl ClientWithServer {
             .await;
 
         TokenPair::from_response(response).await
+    }
+
+    pub async fn create_topic_as_admin_encryption_none(&self, name: &str) {
+        let endpoint = &routes::build_create_topic_path(name);
+        let request_body = serde_json::json!({
+            "encryption": {
+                "mode": "none"
+            }
+        });
+
+        self.make_admin_request(endpoint, request_body).await;
+    }
+
+    pub async fn create_topic_as_admin_and_get_key(&self, name: &str) -> String {
+        let endpoint = &routes::build_create_topic_path(name);
+        let request_body = serde_json::json!({
+            "encryption": {
+                "mode": "generate"
+            }
+        });
+
+        let response = self.make_admin_request(endpoint, request_body).await;
+        let key = TopicEncryptionKey::from_response(response).await.value;
+
+        key
     }
 }
 

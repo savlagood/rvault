@@ -1,161 +1,190 @@
-use crate::{crypto, database::DatabaseError, state::AppState};
-use anyhow::Result;
+use crate::{
+    crypto::{
+        self,
+        aes::{Aes256Cipher, AesError},
+    },
+    database::{DatabaseError, MongoDb},
+    models::StorageAndTopicKeys,
+    storage::StorageError,
+};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha512};
+use std::{collections::HashSet, sync::Arc};
 use thiserror::Error;
 
-pub async fn fetch_topic_names(state: AppState) -> Result<Vec<String>, TopicsError> {
-    let storage = state.get_storage_read().await;
-    let storage_key = storage
-        .get_encryption_key()
-        .map_err(|_| TopicsError::InvalidStorageEncryptionKey)?;
-
-    let db = state.get_db();
-    let encrypted_topic_names = db.fetch_list_of_topics_encrypted_names().await?;
-
-    let cipher = crypto::aes::Aes256Cipher::new(storage_key)
-        .map_err(|_| TopicsError::InvalidStorageEncryptionKey)?;
-
-    let mut topic_names = Vec::with_capacity(encrypted_topic_names.capacity());
-    for encrypted_name in encrypted_topic_names {
-        let encrypted_bytes =
-            crypto::base64::decode(encrypted_name).map_err(|_| TopicsError::TopicCorrupted)?;
-        let decrypted_bytes = cipher
-            .decrypt(&encrypted_bytes)
-            .map_err(|_| TopicsError::TopicCorrupted)?;
-
-        let topic_name =
-            std::str::from_utf8(&decrypted_bytes).map_err(|_| TopicsError::TopicCorrupted)?;
-        topic_names.push(String::from(topic_name));
-    }
-
-    // TODO - нужно все названия расшифровать и сохранить в вектор
-
-    Ok(topic_names)
-}
-
-pub async fn create_topic(name: String, state: AppState) -> Result<Vec<u8>, TopicsError> {
-    let storage = state.get_storage_read().await;
-
-    let storage_key = storage
-        .get_encryption_key()
-        .map_err(|_| TopicsError::InvalidStorageEncryptionKey)?;
-    let topic_key = crypto::generate_256_bit_key();
-
-    let topic = Topic::new(name, storage_key, &topic_key)?;
-
-    let db = state.get_db();
-    db.create_topic(topic).await.map_err(|err| match err {
-        DatabaseError::TopicAlreadyExists => TopicsError::TopicAlreadyExists,
-        _ => TopicsError::Database(err),
-    })?;
-
-    Ok(topic_key)
-}
-
 #[derive(Error, Debug)]
-pub enum TopicsError {
-    // #[error("Checksum mismatch")]
-    // ChecksumMismatch,
-    #[error("Invalid storage encryption key")]
-    InvalidStorageEncryptionKey,
-
-    #[error("Invalid topic encryption key")]
-    InvalidTopicEncryptionKey,
-
+pub enum TopicError {
     #[error("Topic with such name already exists")]
-    TopicAlreadyExists,
+    AlreadyExists,
+
+    #[error("Invalid storage encryption key")]
+    InvalidStorageEncryptionKey(#[from] AesError),
+
+    #[error("Storage error")]
+    Storage(#[from] StorageError),
+
+    #[error("Database error")]
+    Database(#[from] DatabaseError),
 
     #[error("Topic's data has been corrupted")]
     TopicCorrupted,
 
-    #[error("Database error")]
-    Database(#[from] DatabaseError),
+    #[error("Topic was not found")]
+    NotFound,
+
+    #[error("Invalid topic encryption key")]
+    InvalidKey,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Topic {
+fn decrypt_value(cipher: &Aes256Cipher, encrypted_value: String) -> Result<String, TopicError> {
+    let encrypted_value_bytes =
+        crypto::base64::decode(encrypted_value).map_err(|_| TopicError::TopicCorrupted)?;
+    let decrypted_value_bytes = cipher
+        .decrypt(&encrypted_value_bytes)
+        .map_err(|_| TopicError::TopicCorrupted)?;
+
+    let value =
+        std::str::from_utf8(&decrypted_value_bytes).map_err(|_| TopicError::TopicCorrupted)?;
+
+    Ok(String::from(value))
+}
+
+pub struct TopicDao {
+    db: Arc<MongoDb>,
+}
+
+impl TopicDao {
+    pub fn new(db: Arc<MongoDb>) -> Self {
+        Self { db }
+    }
+
+    pub async fn create(&self, topic: TopicDto) -> Result<(), TopicError> {
+        self.db.create_topic(topic).await.map_err(|err| match err {
+            DatabaseError::AlreadyExists => TopicError::AlreadyExists,
+            _ => TopicError::Database(err),
+        })
+    }
+
+    pub async fn update(&self, topic: TopicDto) -> Result<(), TopicError> {
+        self.db.update_topic(topic).await.map_err(|err| match err {
+            DatabaseError::NotFound => TopicError::NotFound,
+            _ => TopicError::Database(err),
+        })
+    }
+
+    pub async fn fetch_topic_names(
+        &self,
+        storage_key: &[u8],
+    ) -> Result<HashSet<String>, TopicError> {
+        let cipher =
+            Aes256Cipher::new(storage_key).map_err(TopicError::InvalidStorageEncryptionKey)?;
+
+        let encrypted_topic_names = self.db.fetch_topic_names().await?;
+
+        let mut topic_names = HashSet::with_capacity(encrypted_topic_names.len());
+        for encrypted_name in encrypted_topic_names {
+            let topic_name = decrypt_value(&cipher, encrypted_name)?;
+            topic_names.insert(topic_name);
+        }
+
+        Ok(topic_names)
+    }
+
+    pub async fn find_by_name(&self, name: &str) -> Result<TopicDto, TopicError> {
+        let hashed_name = crypto::hash_string_base64(name);
+        self.find_by_hashed_name(&hashed_name).await
+    }
+
+    async fn find_by_hashed_name(&self, hashed_name: &str) -> Result<TopicDto, TopicError> {
+        self.db
+            .read_topic(hashed_name)
+            .await
+            .map_err(|err| match err {
+                DatabaseError::Duplicate => TopicError::TopicCorrupted,
+                _ => TopicError::Database(err),
+            })?
+            .ok_or(TopicError::NotFound)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TopicDto {
     pub hashed_name: String,
     pub encrypted_name: String,
-    pub secrets: Vec<String>,
+    pub secret_hashed_names: Vec<String>,
     pub checksum: String,
 }
 
-impl Topic {
-    pub fn new(name: String, storage_key: &[u8], topic_key: &[u8]) -> Result<Self, TopicsError> {
-        let hashed_name = crypto::hash_string_base64(name.as_str());
-        let encrypted_name = crypto::encrypt_string_base64(name.as_str(), storage_key)
-            .map_err(|_| TopicsError::InvalidStorageEncryptionKey)?;
+impl TopicDto {
+    pub fn new(name: String, keyset: &StorageAndTopicKeys) -> Result<Self, TopicError> {
+        let hashed_name = crypto::hash_string_base64(&name);
 
-        let mut topic = Self {
+        let encrypted_name = crypto::encrypt_string_base64(&name, keyset.storage_key)
+            .map_err(TopicError::InvalidStorageEncryptionKey)?;
+
+        let mut topic_dto = Self {
             hashed_name,
             encrypted_name,
-            secrets: Vec::new(),
-            checksum: "".to_string(),
+            secret_hashed_names: Vec::new(),
+            checksum: String::new(),
         };
-        topic.update_hash(storage_key, topic_key)?;
+        topic_dto
+            .update_checksum(keyset)
+            .map_err(TopicError::InvalidStorageEncryptionKey)?;
 
-        Ok(topic)
+        Ok(topic_dto)
     }
 
-    // TODO - future
-    // pub fn ensure_integrity(
-    //     &self,
-    //     storage_key: &[u8],
-    //     topic_key: &[u8],
-    // ) -> Result<(), TopicsError> {
-    //     let calculated_hash = self.calculate_hash(storage_key, topic_key)?;
+    pub fn is_contains_secret(&self, secret_hashed_name: &String) -> bool {
+        self.secret_hashed_names.contains(secret_hashed_name)
+    }
 
-    //     if calculated_hash == self.checksum {
-    //         Ok(())
-    //     } else {
-    //         Err(TopicsError::ChecksumMismatch)
-    //     }
-    // }
+    pub fn check_integrity(&self, keyset: &StorageAndTopicKeys) -> Result<(), TopicError> {
+        let current_checksum = self.calculate_checksum(keyset)?;
 
-    fn update_hash(&mut self, storage_key: &[u8], topic_key: &[u8]) -> Result<(), TopicsError> {
-        self.checksum = self.calculate_hash(storage_key, topic_key)?;
+        if self.checksum != current_checksum {
+            return Err(TopicError::InvalidKey);
+        }
+
         Ok(())
     }
 
-    fn calculate_hash(&self, storage_key: &[u8], topic_key: &[u8]) -> Result<String, TopicsError> {
-        let mut hasher = Sha256::new();
+    pub fn add_hashed_secret_name(
+        &mut self,
+        name: String,
+        keyset: &StorageAndTopicKeys,
+    ) -> Result<(), TopicError> {
+        self.secret_hashed_names.push(name);
+        self.update_checksum(keyset)
+            .map_err(TopicError::InvalidStorageEncryptionKey)?;
+
+        Ok(())
+    }
+
+    fn update_checksum(&mut self, keyset: &StorageAndTopicKeys) -> Result<(), AesError> {
+        self.checksum = self.calculate_checksum(keyset)?;
+        Ok(())
+    }
+
+    fn calculate_checksum(&self, keyset: &StorageAndTopicKeys) -> Result<String, AesError> {
+        let mut hasher = Sha512::new();
+
+        // Using storage and topic keys as salt
+        hasher.update(keyset.storage_key);
+        hasher.update(keyset.topic_key);
 
         hasher.update(&self.hashed_name);
         hasher.update(&self.encrypted_name);
 
-        let mut sorted_secrets = self.secrets.clone();
+        let mut sorted_secrets = self.secret_hashed_names.clone();
         sorted_secrets.sort();
         for secret in sorted_secrets {
             hasher.update(secret);
         }
 
         let checksum_bytes = hasher.finalize().to_vec();
+        let encoded_base64_checksum = crypto::base64::encode(&checksum_bytes);
 
-        let encrypted_checksum = self.encrypt_checksum(checksum_bytes, storage_key, topic_key)?;
-
-        let checksum_base64 = crypto::base64::encode(&encrypted_checksum);
-        Ok(checksum_base64)
-    }
-
-    fn encrypt_checksum(
-        &self,
-        checksum: Vec<u8>,
-        storage_key: &[u8],
-        topic_key: &[u8],
-    ) -> Result<Vec<u8>, TopicsError> {
-        let storage_cipher = crypto::aes::Aes256Cipher::new(storage_key)
-            .map_err(|_err| TopicsError::InvalidStorageEncryptionKey)?;
-        let encrypted_checksum = storage_cipher
-            .encrypt(&checksum)
-            .map_err(|_err| TopicsError::InvalidStorageEncryptionKey)?;
-
-        let topic_cipher = crypto::aes::Aes256Cipher::new(topic_key)
-            .map_err(|_err| TopicsError::InvalidTopicEncryptionKey)?;
-        let encrypted_checksum = topic_cipher
-            .encrypt(&encrypted_checksum)
-            .map_err(|_err| TopicsError::InvalidTopicEncryptionKey)?;
-
-        Ok(encrypted_checksum)
+        Ok(encoded_base64_checksum)
     }
 }

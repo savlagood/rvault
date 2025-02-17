@@ -2,6 +2,10 @@ use crate::tests::models::policies::Policies;
 use once_cell::sync::Lazy;
 use std::time::Duration;
 
+// headers
+pub const HEADER_WITH_TOPIC_KEY: &str = "x-rvault-topic-key";
+pub const _HEADER_WITH_SECRET_KEY: &str = "x-rvault-secret-key";
+
 // test constants for database
 pub const DB_NAME: &str = "test_rvault";
 

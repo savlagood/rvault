@@ -20,15 +20,21 @@ pub async fn ensure_storage_is_unsealed(state: AppState) -> Result<(), ResponseE
 }
 
 pub fn ensure_topic_name_valid(topic_name: &str) -> Result<(), ResponseError> {
-    if validate_topic_name(topic_name) {
+    if validate_name(topic_name) {
         Ok(())
     } else {
         Err(ResponseError::InvalidTopicName)
     }
 }
 
-fn validate_topic_name(topic_name: &str) -> bool {
-    topic_name
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+pub fn ensure_secret_name_valid(secret_name: &str) -> Result<(), ResponseError> {
+    if validate_name(secret_name) {
+        Ok(())
+    } else {
+        Err(ResponseError::InvalidSecretName)
+    }
+}
+
+fn validate_name(name: &str) -> bool {
+    name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }

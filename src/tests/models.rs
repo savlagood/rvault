@@ -166,7 +166,8 @@ pub mod topics {
 
     #[derive(Serialize, Deserialize)]
     pub struct TopicEncryptionKey {
-        pub key: String,
+        #[serde(rename = "topic_key")]
+        pub value: String,
     }
 
     impl TopicEncryptionKey {
@@ -180,7 +181,6 @@ pub mod topics {
 
     #[derive(Serialize, Deserialize)]
     pub struct TopicsNames {
-        #[serde(rename = "topics")]
         pub names: Vec<String>,
     }
 
@@ -190,6 +190,26 @@ pub mod topics {
                 .json::<Self>()
                 .await
                 .expect("Error during parsing topics names from response")
+        }
+    }
+}
+
+pub mod secrets {
+    use reqwest::Response;
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    pub struct SecretEncryptionKey {
+        #[serde(rename = "secret_key")]
+        pub value: String,
+    }
+
+    impl SecretEncryptionKey {
+        pub async fn from_response(response: Response) -> Self {
+            response
+                .json::<Self>()
+                .await
+                .expect("Error during parsing token pair from response")
         }
     }
 }

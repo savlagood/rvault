@@ -35,6 +35,27 @@ pub fn build_policies_for_topic_access(topic_name: &str, permissions: Vec<Permis
     policies
 }
 
+pub fn build_policies_for_topic_and_secret_access(
+    topic_name: &str,
+    topic_permissions: Vec<Permission>,
+    secret_name: &str,
+    secret_permissions: Vec<Permission>,
+) -> Policies {
+    let topic_permissions = serde_json::json!(topic_permissions);
+    let secret_permissions = serde_json::json!(secret_permissions);
+
+    let policies = Policies::from_value(serde_json::json!({
+        topic_name: {
+            "permissions": topic_permissions,
+            "secrets": {
+                secret_name: secret_permissions
+            }
+        }
+    }));
+
+    policies
+}
+
 pub fn calculate_expiration_time(ttl: Duration) -> usize {
     (Utc::now() + ttl).timestamp() as usize
 }

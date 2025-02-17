@@ -1,5 +1,5 @@
 use crate::{
-    http::{auth, storage, topics},
+    http::{auth, secrets, storage, topics},
     state::AppState,
 };
 use anyhow::{Context, Result};
@@ -40,7 +40,14 @@ pub fn create_router(app_state: AppState) -> Router {
                     "/storage",
                     storage::handlers::create_router(app_state.clone()),
                 )
-                .nest("/", topics::handlers::create_router(app_state.clone())),
+                .nest(
+                    "/topics",
+                    topics::handlers::create_router(app_state.clone()),
+                )
+                .nest(
+                    "/topics/:topic_name/secrets",
+                    secrets::handlers::create_router(app_state.clone()),
+                ),
         )
         .layer((
             SetSensitiveHeadersLayer::new([AUTHORIZATION]),

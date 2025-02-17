@@ -1,6 +1,10 @@
 use crate::{
-    http::jwt_tokens::TokenError, policies::PoliciesError, storage::StorageError,
-    topics::TopicsError,
+    crypto::hkdf::HkdfError,
+    http::jwt_tokens::TokenError,
+    policies::PoliciesError,
+    secrets::SecretError,
+    storage::StorageError,
+    topics::TopicError,
 };
 use axum::{
     http::StatusCode,
@@ -36,6 +40,12 @@ pub enum ResponseError {
     #[error("Topic name can only contain Latin letters (both uppercase and lowercase), numbers, and underscores")]
     InvalidTopicName,
 
+    #[error("Secret name can only contain Latin letters (both uppercase and lowercase), numbers, and underscores")]
+    InvalidSecretName,
+
+    #[error(transparent)]
+    HkdfError(#[from] HkdfError),
+
     #[error(transparent)]
     Token(#[from] TokenError),
 
@@ -43,7 +53,10 @@ pub enum ResponseError {
     Storage(#[from] StorageError),
 
     #[error(transparent)]
-    Topics(#[from] TopicsError),
+    Topic(#[from] TopicError),
+
+    #[error(transparent)]
+    Secret(#[from] SecretError),
 
     #[error(transparent)]
     Policies(#[from] PoliciesError),
@@ -55,7 +68,17 @@ impl IntoResponse for ResponseError {
             ResponseError::AccessDenied => (StatusCode::FORBIDDEN, self.to_string()),
             ResponseError::DifferentTokens => (StatusCode::BAD_REQUEST, self.to_string()),
             ResponseError::CannotSetDefaultFields => (StatusCode::BAD_REQUEST, self.to_string()),
+
             ResponseError::InvalidTopicName => (StatusCode::BAD_REQUEST, self.to_string()),
+            ResponseError::InvalidSecretName => (StatusCode::BAD_REQUEST, self.to_string()),
+
+            ResponseError::HkdfError(err) => {
+                error!("Error during hkdf operation: {err:?}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal Vault Error".to_string(),
+                )
+            }
 
             ResponseError::Token(err) => match err {
                 TokenError::CreationFailed(jwt_err) => {
@@ -87,29 +110,57 @@ impl IntoResponse for ResponseError {
                 StorageError::InvalidSharedKeys(err) => (StatusCode::BAD_REQUEST, err.to_string()),
             },
 
-            ResponseError::Topics(err) => match err {
-                // TopicsError::ChecksumMismatch => (
-                //     StatusCode::FORBIDDEN,
-                //     "Invalid topic encryption key".to_string(),
-                // ),
-                TopicsError::InvalidStorageEncryptionKey => {
+            ResponseError::Topic(err) => match err {
+                TopicError::AlreadyExists => (StatusCode::CONFLICT, err.to_string()),
+                TopicError::InvalidStorageEncryptionKey(err) => {
                     error!("Internal storage error: {err:?}");
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         "Internal Storage Error".to_string(),
                     )
                 }
-                TopicsError::InvalidTopicEncryptionKey => (StatusCode::FORBIDDEN, err.to_string()),
-                TopicsError::TopicAlreadyExists => (StatusCode::CONFLICT, err.to_string()),
-                TopicsError::TopicCorrupted => {
+                TopicError::Storage(err) => {
+                    error!("Internal storage error: {err:?}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal Storage Error".to_string(),
+                    )
+                }
+                TopicError::Database(err) => {
+                    error!("Error during database operation: {err:?}");
+                    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                }
+                TopicError::TopicCorrupted => {
                     error!("Topic data has been corrupted: {}", err.to_string());
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         String::from("Topic's data has been corrupted"),
                     )
                 }
-                TopicsError::Database(err) => {
-                    error!("Error during database operation : {err:?}");
+                TopicError::NotFound => (
+                    StatusCode::NOT_FOUND,
+                    "The topic with the requested name was not found".to_string(),
+                ),
+                TopicError::InvalidKey => (StatusCode::FORBIDDEN, err.to_string()),
+            },
+
+            ResponseError::Secret(err) => match err {
+                SecretError::InvalidStorageKey(err) => {
+                    error!("Internal storage error: {err:?}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Internal Storage Error".to_string(),
+                    )
+                }
+                SecretError::InvalidTopicKey(_err) => {
+                    (StatusCode::FORBIDDEN, "Invalid topic key".to_string())
+                }
+                SecretError::InvalidSecretKey(_err) => {
+                    (StatusCode::FORBIDDEN, "Invalid secret key".to_string())
+                }
+                SecretError::AlreadyExists => (StatusCode::CONFLICT, err.to_string()),
+                SecretError::Database(err) => {
+                    error!("Error during database operation: {err:?}");
                     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
                 }
             },

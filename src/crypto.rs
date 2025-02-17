@@ -1,5 +1,5 @@
 use rand::{rngs::OsRng, RngCore};
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha512};
 
 pub fn generate_256_bit_key() -> Vec<u8> {
     let mut key = vec![0u8; 32];
@@ -8,7 +8,7 @@ pub fn generate_256_bit_key() -> Vec<u8> {
 }
 
 pub fn hash_string_base64(data: &str) -> String {
-    let hash = Sha256::digest(data.as_bytes());
+    let hash = Sha512::digest(data.as_bytes());
     base64::encode(&hash)
 }
 
@@ -18,6 +18,35 @@ pub fn encrypt_string_base64(data: &str, key: &[u8]) -> Result<String, aes::AesE
     let encrypted_data = base64::encode(&encrypted_data_bytes);
 
     Ok(encrypted_data)
+}
+
+pub mod hkdf {
+    use hkdf::Hkdf;
+    use sha2::Sha512;
+    use thiserror::Error;
+
+    #[derive(Error, Debug)]
+    pub enum HkdfError {
+        #[error("Invalid length of okm - impossible")]
+        InvalidLength(String),
+    }
+
+    pub fn string_into_256_bit_key(data: String) -> Result<Vec<u8>, HkdfError> {
+        // ikm - Initial Key Material
+        let ikm = data.as_bytes();
+
+        let salt = [0u8; 32];
+        let hk = Hkdf::<Sha512>::new(Some(&salt), ikm);
+
+        // okm - Output Key Material
+        let mut okm = vec![0u8; 32];
+
+        let info = b"key-from-string";
+        hk.expand(info, &mut okm)
+            .map_err(|err| HkdfError::InvalidLength(err.to_string()))?;
+
+        Ok(okm)
+    }
 }
 
 pub mod base64 {

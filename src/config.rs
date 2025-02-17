@@ -3,9 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
 
 const CONFIG_FILEPATH: &str = "./rvault_data/storage.yaml";
+
 const ENV_ROOT_TOKEN: &str = "RVAULT_ROOT_TOKEN";
 const ENV_AUTH_SECRET: &str = "RVAULT_AUTH_SECRET";
 const ENV_DB_CONNECTION_STRING: &str = "RVAULT_DB_CONNECTION_STRING";
+const ENV_DEFAULT_TOPIC_KEY: &str = "RVAULT_DEFAULT_TOPIC_KEY";
+const ENV_DEFAULT_SECRET_KEY: &str = "RVAULT_DEFAULT_SECRET_KEY";
 
 fn check_directory_existence(path: &Path) -> Result<()> {
     if !path.exists() {
@@ -91,6 +94,8 @@ struct EnvConfigData {
     root_token: String,
     jwt_secret: String,
     db_connection_string: String,
+    default_topic_key: String,
+    default_secret_key: String,
 }
 
 impl EnvConfigData {
@@ -99,6 +104,8 @@ impl EnvConfigData {
             root_token: get_env_var(ENV_ROOT_TOKEN)?,
             jwt_secret: get_env_var(ENV_AUTH_SECRET)?,
             db_connection_string: get_env_var(ENV_DB_CONNECTION_STRING)?,
+            default_topic_key: get_env_var(ENV_DEFAULT_TOPIC_KEY)?,
+            default_secret_key: get_env_var(ENV_DEFAULT_SECRET_KEY)?,
         })
     }
 }
@@ -113,6 +120,8 @@ pub struct Config {
     pub root_token: String,
     pub jwt_secret: String,
     pub db_connection_string: String,
+    pub default_topic_key: String,
+    pub default_secret_key: String,
 }
 
 impl Config {
@@ -152,6 +161,8 @@ impl Config {
             root_token: env_config.root_token,
             jwt_secret: env_config.jwt_secret,
             db_connection_string: env_config.db_connection_string,
+            default_topic_key: env_config.default_topic_key,
+            default_secret_key: env_config.default_secret_key,
         };
 
         Ok(config)
