@@ -2,27 +2,82 @@ use crate::{
     crypto,
     http::{errors::ResponseError, headers::TopicKeyHeader, jwt_tokens::AccessTokenClaims, utils},
     models::{
-        http::secrets::{SecretEncryptionKey, SecretSettings},
+        http::secrets::{SecretEncryptionKey, SecretNames, SecretSettings},
         Encryption, StorageAndTopicKeys, StorageTopicAndSecretKeys,
     },
     policies::Permission,
     secrets,
     state::AppState,
-    topics,
+    topics::{self, TopicDao},
 };
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use axum_extra::TypedHeader;
+use std::collections::HashSet;
 use tracing::info;
 
 pub fn create_router(app_state: AppState) -> Router {
     Router::new()
+        .route("/", get(get_secret_names_handler))
         .route("/:secret_name", post(create_secret_handler))
         .with_state(app_state)
+}
+
+async fn get_secret_names_handler(
+    claims: AccessTokenClaims,
+    TypedHeader(topic_key_header): TypedHeader<TopicKeyHeader>,
+    Path(topic_name): Path<String>,
+    State(state): State<AppState>,
+) -> Result<Json<SecretNames>, ResponseError> {
+    // checks
+    utils::is_admin(&claims.token_type)?;
+    utils::ensure_storage_is_unsealed(state.clone()).await?;
+
+    // actions
+    let config = state.get_config();
+    let primary_topic_key = topic_key_header
+        .value
+        .unwrap_or(config.default_topic_key.clone());
+
+    let secret_names = get_secret_names(topic_name, primary_topic_key, state).await?;
+
+    let response_body = SecretNames {
+        names: secret_names,
+    };
+    Ok(Json(response_body))
+}
+
+async fn get_secret_names(
+    topic_name: String,
+    primary_topic_key: String,
+    state: AppState,
+) -> Result<HashSet<String>, ResponseError> {
+    let storage = state.get_storage_read().await;
+    let storage_key = storage.get_encryption_key()?;
+
+    let topic_key = crypto::hkdf::string_into_256_bit_key(primary_topic_key)?;
+
+    let keysey = StorageAndTopicKeys {
+        storage_key,
+        topic_key: &topic_key,
+    };
+
+    let db = state.get_db();
+    let topic_dao = TopicDao::new(db.clone());
+
+    let topic = topic_dao.find_by_name(&topic_name).await?;
+    topic.check_integrity(&keysey)?;
+
+    let secret_dao = secrets::SecretDao::new(db);
+    let secret_names = secret_dao
+        .fetch_secret_names(&topic.hashed_name, storage_key)
+        .await?;
+
+    Ok(secret_names)
 }
 
 async fn create_secret_handler(
@@ -109,7 +164,12 @@ async fn create_secret(
         secret_key: &secret_key,
     };
 
-    let secret = secrets::SecretDto::new(secret_name, secret_settings.value, &secret_keyset)?;
+    let secret = secrets::SecretDto::new(
+        secret_name,
+        secret_settings.value,
+        topic.hashed_name.clone(),
+        &secret_keyset,
+    )?;
     if topic.is_contains_secret(&secret.hashed_name) {
         return Err(ResponseError::Secret(secrets::SecretError::AlreadyExists));
     }

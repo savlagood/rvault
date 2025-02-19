@@ -28,6 +28,15 @@ pub async fn init_and_get_shared_keys(client: &ClientWithServer) -> SharedKeys {
     shared_keys
 }
 
+pub async fn from_uninitialized_to_sealed(client: &ClientWithServer) {
+    let _shared_keys = init_and_get_shared_keys(client).await;
+}
+
+pub async fn from_uninitialized_to_unsealed(client: &ClientWithServer) {
+    let shared_keys = init_and_get_shared_keys(client).await;
+    unseal(client, &shared_keys).await;
+}
+
 pub async fn unseal(client: &ClientWithServer, shared_keys: &SharedKeys) {
     let request_body = serde_json::json!(shared_keys);
     let response = client
@@ -37,11 +46,11 @@ pub async fn unseal(client: &ClientWithServer, shared_keys: &SharedKeys) {
     assert_eq!(response.status(), StatusCode::OK);
 }
 
-pub async fn from_uninitialized_to_sealed(client: &ClientWithServer) {
-    let _shared_keys = init_and_get_shared_keys(client).await;
-}
+pub async fn seal(client: &ClientWithServer) {
+    let request_body = serde_json::json!({});
+    let response = client
+        .make_admin_request(&routes::SEAL_STORAGE_ENDPOINT, request_body)
+        .await;
 
-pub async fn from_uninitialized_to_unsealed(client: &ClientWithServer) {
-    let shared_keys = init_and_get_shared_keys(client).await;
-    unseal(client, &shared_keys).await;
+    assert_eq!(response.status(), StatusCode::OK);
 }

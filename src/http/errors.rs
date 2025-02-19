@@ -1,10 +1,6 @@
 use crate::{
-    crypto::hkdf::HkdfError,
-    http::jwt_tokens::TokenError,
-    policies::PoliciesError,
-    secrets::SecretError,
-    storage::StorageError,
-    topics::TopicError,
+    crypto::hkdf::HkdfError, http::jwt_tokens::TokenError, policies::PoliciesError,
+    secrets::SecretError, storage::StorageError, topics::TopicError,
 };
 use axum::{
     http::StatusCode,
@@ -157,6 +153,13 @@ impl IntoResponse for ResponseError {
                 }
                 SecretError::InvalidSecretKey(_err) => {
                     (StatusCode::FORBIDDEN, "Invalid secret key".to_string())
+                }
+                SecretError::SecretCorrupted => {
+                    error!("Secret data has been corrupted: {}", err.to_string());
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        String::from("Secret's data has been corrupted"),
+                    )
                 }
                 SecretError::AlreadyExists => (StatusCode::CONFLICT, err.to_string()),
                 SecretError::Database(err) => {

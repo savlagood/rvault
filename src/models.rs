@@ -50,6 +50,7 @@ pub mod http {
     pub mod secrets {
         use crate::models::Encryption;
         use serde::{Deserialize, Serialize};
+        use std::collections::HashSet;
 
         #[derive(Deserialize)]
         pub struct SecretSettings {
@@ -62,6 +63,11 @@ pub mod http {
             #[serde(rename = "secret_key")]
             #[serde(skip_serializing_if = "Option::is_none")]
             pub value: Option<String>,
+        }
+
+        #[derive(Serialize)]
+        pub struct SecretNames {
+            pub names: HashSet<String>,
         }
     }
 }

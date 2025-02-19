@@ -55,7 +55,6 @@ lazy_static! {
     };
 }
 
-// builders
 pub fn build_create_topic_path(topic_name: &str) -> PathWithMethod {
     PathWithMethod {
         path: format!("api/topics/{topic_name}"),
@@ -63,10 +62,18 @@ pub fn build_create_topic_path(topic_name: &str) -> PathWithMethod {
     }
 }
 
+// secrets
 pub fn build_create_secret_path(topic_name: &str, secret_name: &str) -> PathWithMethod {
     PathWithMethod {
         path: format!("api/topics/{topic_name}/secrets/{secret_name}"),
         method: RequestMethod::POST,
+    }
+}
+
+pub fn build_list_of_secrets_path(topic_name: &str) -> PathWithMethod {
+    PathWithMethod {
+        path: format!("api/topics/{topic_name}/secrets"),
+        method: RequestMethod::GET,
     }
 }
 

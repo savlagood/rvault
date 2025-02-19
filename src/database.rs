@@ -135,10 +135,27 @@ impl MongoDb {
         Ok(())
     }
 
+    pub async fn fetch_secret_names(
+        &self,
+        hashed_topic_name: &str,
+    ) -> Result<Vec<String>, DatabaseError> {
+        let collection = self.get_secrets_collection().await;
+
+        let filter = bson::doc! { "hashed_topic_name": hashed_topic_name };
+        let mut cursor = collection.find(filter).await?;
+
+        let mut secrets = Vec::new();
+        while let Some(secret_document) = cursor.try_next().await? {
+            secrets.push(secret_document.encrypted_name);
+        }
+
+        Ok(secrets)
+    }
+
     pub async fn create_secret(&self, secret: SecretDto) -> Result<(), DatabaseError> {
         let collection = self.get_secrets_collection().await;
 
-        let filter = bson::doc! { "hashed_name": secret.hashed_name.as_str() };
+        let filter = bson::doc! { "hashed_topic_name": secret.hashed_topic_name.as_str(), "hashed_name": secret.hashed_name.as_str() };
         if collection.find_one(filter).await?.is_some() {
             return Err(DatabaseError::AlreadyExists);
         }

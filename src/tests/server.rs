@@ -2,12 +2,12 @@ use crate::{http::server::create_router, state::AppState};
 
 use crate::tests::{
     consts::ENV_ROOT_TOKEN,
-    models::{jwt_tokens::TokenPair, policies::Policies, topics::TopicEncryptionKey},
+    models::{jwt_tokens::TokenPair, policies::Policies, topics::TopicEncryptionKey, Headers},
     routes::{self, PathWithMethod, RequestMethod},
     utils,
 };
 use once_cell::sync::Lazy;
-use reqwest::{header::HeaderMap, Client, Response};
+use reqwest::{Client, Response};
 use serde_json::Value;
 use tokio::{net::TcpListener, runtime::Runtime, task::JoinHandle};
 
@@ -58,7 +58,7 @@ impl ClientWithServer {
         &self,
         endpoint: &PathWithMethod,
         body: Value,
-        headers: HeaderMap,
+        headers: Headers,
     ) -> Response {
         let token_pair = self.fetch_admin_token_pair().await;
         let admin_access_token = token_pair.access_token;
@@ -106,7 +106,7 @@ impl ClientWithServer {
         endpoint: &PathWithMethod,
         body: Value,
         token: &str,
-        headers: HeaderMap,
+        headers: Headers,
     ) -> Response {
         let url = routes::build_url(&endpoint.path, self.port);
 
@@ -116,7 +116,7 @@ impl ClientWithServer {
         };
 
         request
-            .headers(headers)
+            .headers(headers.headers)
             .json(&body)
             .bearer_auth(token)
             .send()
@@ -170,6 +170,43 @@ impl ClientWithServer {
 
         key
     }
+
+    pub async fn create_secret_as_admin_encryption_none(
+        &self,
+        topic_name: &str,
+        secret_name: &str,
+        value: &str,
+    ) {
+        let endpoint = &routes::build_create_secret_path(topic_name, secret_name);
+        let request_body = serde_json::json!({
+            "value": value,
+            "encryption": {
+                "mode": "none"
+            }
+        });
+
+        self.make_admin_request(endpoint, request_body).await;
+    }
+
+    // pub async fn create_secret_as_admin_and_get_key(
+    //     &self,
+    //     topic_name: &str,
+    //     secret_name: &str,
+    //     value: &str,
+    // ) -> String {
+    //     let endpoint = &routes::build_create_secret_path(topic_name, secret_name);
+    //     let request_body = serde_json::json!({
+    //         "value": value,
+    //         "encryption": {
+    //             "mode": "generate"
+    //         }
+    //     });
+
+    //     let response = self.make_admin_request(endpoint, request_body).await;
+    //     let key = TopicEncryptionKey::from_response(response).await.value;
+
+    //     key
+    // }
 }
 
 pub async fn start_server() -> (u16, JoinHandle<()>) {

@@ -6,17 +6,13 @@ use crate::tests::{
             assert_response_contains_expected_secret_key, assert_response_contains_valid_secret_key,
         },
     },
-    consts::HEADER_WITH_TOPIC_KEY,
-    models::policies::Permission,
+    models::{policies::Permission, Headers},
     routes,
     server::{use_app, ClientWithServer},
     storage, utils,
 };
 use once_cell::sync::Lazy;
-use reqwest::{
-    header::{HeaderMap, HeaderValue},
-    StatusCode,
-};
+use reqwest::StatusCode;
 
 #[cfg(test)]
 use pretty_assertions::assert_eq;
@@ -34,16 +30,6 @@ static SIMPLE_REQUEST_BODY: Lazy<serde_json::Value> = Lazy::new(|| {
         }
     })
 });
-
-fn build_header_with_topic_key(topic_key: &str) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        HEADER_WITH_TOPIC_KEY,
-        HeaderValue::from_str(topic_key).expect("Failed to convert into header value"),
-    );
-
-    headers
-}
 
 #[test]
 fn test_as_admin() {
@@ -152,7 +138,9 @@ fn test_with_topic_key_header() {
         storage::from_uninitialized_to_unsealed(&client).await;
         let topic_key = client.create_topic_as_admin_and_get_key(topic_name).await;
 
-        let headers = build_header_with_topic_key(&topic_key);
+        let mut headers = Headers::new();
+        headers.add_topic_key_header(&topic_key);
+
         let response = client
             .make_admin_request_with_headers(&endpoint, request_body, headers)
             .await;
@@ -331,6 +319,47 @@ fn test_create_secret_in_unexistent_topic() {
 
         let expected_status_code = StatusCode::NOT_FOUND;
         assert_error_response(response, expected_status_code).await;
+    });
+}
+
+#[test]
+fn test_create_two_secrets_with_same_name_in_different_topics() {
+    let first_topic_name = "some_topic_1";
+    let second_topic_name = "some_topic_2";
+    let secret_name = VALID_SECRET_NAME;
+
+    let first_endpoint = routes::build_create_secret_path(first_topic_name, secret_name);
+    let second_endpoint = routes::build_create_secret_path(second_topic_name, secret_name);
+
+    let request_body = SIMPLE_REQUEST_BODY.clone();
+
+    use_app(async move {
+        let client = ClientWithServer::new().await;
+        storage::from_uninitialized_to_unsealed(&client).await;
+
+        // create both topics
+        client
+            .create_topic_as_admin_encryption_none(first_topic_name)
+            .await;
+        client
+            .create_topic_as_admin_encryption_none(second_topic_name)
+            .await;
+
+        // create secret in first topic
+        let response = client
+            .make_admin_request(&first_endpoint, request_body.clone())
+            .await;
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_empty_response(response).await;
+
+        // create secret in second topic
+        let response = client
+            .make_admin_request(&second_endpoint, request_body)
+            .await;
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_empty_response(response).await;
     });
 }
 

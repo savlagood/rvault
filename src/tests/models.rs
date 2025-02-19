@@ -1,3 +1,30 @@
+use crate::tests::consts::HEADER_WITH_TOPIC_KEY;
+use reqwest::header::{HeaderMap, HeaderValue};
+
+pub struct Headers {
+    pub headers: HeaderMap,
+}
+
+impl Headers {
+    pub fn new() -> Self {
+        Self {
+            headers: HeaderMap::new(),
+        }
+    }
+
+    pub fn add_topic_key_header(&mut self, key: &str) {
+        let value =
+            HeaderValue::from_str(key).expect("Failed to convert into header value topic key");
+        self.headers.insert(HEADER_WITH_TOPIC_KEY, value);
+    }
+
+    // pub fn add_secret_key_header(&mut self, key: &str) {
+    //     let value =
+    //         HeaderValue::from_str(key).expect("Failed to convert into header value secret key");
+    //     self.headers.insert(HEADER_WITH_SECRET_KEY, value);
+    // }
+}
+
 pub mod jwt_tokens {
     use crate::tests::{consts::ENV_JWT_SECRET, models::policies::Policies, utils};
     use jsonwebtoken::{DecodingKey, Validation};
@@ -210,6 +237,20 @@ pub mod secrets {
                 .json::<Self>()
                 .await
                 .expect("Error during parsing token pair from response")
+        }
+    }
+
+    #[derive(Deserialize)]
+    pub struct SecretNames {
+        pub names: Vec<String>,
+    }
+
+    impl SecretNames {
+        pub async fn from_response(response: Response) -> Self {
+            response
+                .json::<Self>()
+                .await
+                .expect("Error during parsing secret names from response")
         }
     }
 }

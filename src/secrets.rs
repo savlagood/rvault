@@ -1,11 +1,14 @@
 use crate::{
-    crypto::{self, aes::AesError},
+    crypto::{
+        self,
+        aes::{Aes256Cipher, AesError},
+    },
     database::{DatabaseError, MongoDb},
     models::StorageTopicAndSecretKeys,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -22,10 +25,25 @@ pub enum SecretError {
     #[error("Secret with such name already exists")]
     AlreadyExists,
 
+    #[error("Secret's data has been corrupted")]
+    SecretCorrupted,
+
     #[error("Database error")]
     Database(#[from] DatabaseError),
 }
 
+fn decrypt_value(cipher: &Aes256Cipher, encrypted_value: String) -> Result<String, SecretError> {
+    let encrypted_value_bytes =
+        crypto::base64::decode(encrypted_value).map_err(|_| SecretError::SecretCorrupted)?;
+    let decrypted_value_bytes = cipher
+        .decrypt(&encrypted_value_bytes)
+        .map_err(|_| SecretError::SecretCorrupted)?;
+
+    let value =
+        std::str::from_utf8(&decrypted_value_bytes).map_err(|_| SecretError::SecretCorrupted)?;
+
+    Ok(String::from(value))
+}
 pub struct SecretDao {
     db: Arc<MongoDb>,
 }
@@ -44,16 +62,35 @@ impl SecretDao {
                 _ => SecretError::Database(err),
             })
     }
+
+    pub async fn fetch_secret_names(
+        &self,
+        hashed_topic_name: &str,
+        storage_key: &[u8],
+    ) -> Result<HashSet<String>, SecretError> {
+        let cipher = Aes256Cipher::new(storage_key)
+            .map_err(|err| SecretError::InvalidStorageKey(err.to_string()))?;
+
+        let encrypted_secret_names = self.db.fetch_secret_names(hashed_topic_name).await?;
+
+        let mut secret_names = HashSet::with_capacity(encrypted_secret_names.len());
+        for encrypted_name in encrypted_secret_names {
+            let secret_name = decrypt_value(&cipher, encrypted_name)?;
+            secret_names.insert(secret_name);
+        }
+
+        Ok(secret_names)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SecretDto {
     pub hashed_name: String,
     pub encrypted_name: String,
+    pub hashed_topic_name: String,
     pub versions: Vec<String>,
     pub cursor: usize,
     pub checksum: String,
-    pub encrypted: bool,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exp: Option<usize>,
@@ -63,6 +100,7 @@ impl SecretDto {
     pub fn new(
         name: String,
         value: String,
+        hashed_topic_name: String,
         keyset: &StorageTopicAndSecretKeys,
     ) -> Result<Self, SecretError> {
         let hashed_name = crypto::hash_string_base64(&name);
@@ -74,10 +112,10 @@ impl SecretDto {
         let mut secret_dto = Self {
             hashed_name,
             encrypted_name,
+            hashed_topic_name,
             versions: vec![encrypted_value],
             cursor: 0,
             checksum: "".to_string(),
-            encrypted: false,
             exp: None,
         };
         secret_dto
@@ -121,7 +159,6 @@ impl SecretDto {
         }
 
         hasher.update(self.cursor.to_le_bytes());
-        hasher.update([self.encrypted as u8]);
 
         if let Some(exp) = self.exp {
             hasher.update(exp.to_le_bytes());

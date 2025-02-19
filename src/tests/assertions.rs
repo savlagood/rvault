@@ -1,3 +1,5 @@
+use std::{collections::HashMap, fmt::Debug, hash::Hash};
+
 use reqwest::Response;
 
 #[cfg(test)]
@@ -11,6 +13,28 @@ pub async fn assert_empty_response(response: Response) {
         .expect("Failed to parse response body as JSON");
 
     assert_eq!(response_body, empty_response);
+}
+
+pub fn assert_same_elements<T>(vec1: &[T], vec2: &[T])
+where
+    T: Eq + Hash + Debug,
+{
+    let count_vec1 = count_elements(vec1);
+    let count_vec2 = count_elements(vec2);
+
+    assert_eq!(count_vec1, count_vec2);
+}
+
+fn count_elements<T>(vector: &[T]) -> HashMap<&T, usize>
+where
+    T: Eq + Hash,
+{
+    let mut counts = HashMap::with_capacity(vector.len());
+    for item in vector {
+        *counts.entry(item).or_insert(0) += 1;
+    }
+
+    counts
 }
 
 pub mod error_message {
