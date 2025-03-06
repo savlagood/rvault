@@ -76,26 +76,31 @@ async fn generate_key_and_create_topic(
     settings: TopicSettings,
     state: AppState,
 ) -> Result<Option<String>, ResponseError> {
-    let external_key = generate_external_key(
+    // topic key
+    let (external_key, topic_key) = get_external_and_internal_topic_keys(
         settings.encryption.clone(),
         &state.get_config().default_topic_key,
-    );
-    let topic_key = hkdf::string_into_256_bit_key(external_key.clone())?;
+    )?;
 
+    // storage key
     let storage = state.get_storage_read().await;
     let storage_key = storage.get_encryption_key()?;
 
+    // keyset
     let keyset = StorageAndTopicKeys {
         storage_key,
         topic_key: &topic_key,
     };
 
+    // create DAO
     let db = state.get_db_conn();
     let topic_dao = topics::TopicDao::new(db);
 
+    // create topic structure
     let topic = topics::TopicDto::new(name, &keyset)?;
     let hashed_name = topic.hashed_name.clone();
 
+    // save topic to database
     topic_dao.create(topic).await?;
 
     info!("Topic {hashed_name:?} successfully created");
@@ -105,4 +110,14 @@ async fn generate_key_and_create_topic(
         _ => Some(external_key),
     };
     Ok(external_key)
+}
+
+fn get_external_and_internal_topic_keys(
+    encryption_type: Encryption,
+    default_key: &str,
+) -> Result<(String, Vec<u8>), ResponseError> {
+    let external_key = generate_external_key(encryption_type, default_key);
+    let internal_key = hkdf::string_into_256_bit_key(external_key.clone())?;
+
+    Ok((external_key, internal_key))
 }

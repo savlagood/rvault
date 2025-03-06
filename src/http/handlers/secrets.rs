@@ -120,36 +120,43 @@ async fn create_secret(
     secret_settings: SecretSettings,
     state: AppState,
 ) -> Result<Option<String>, ResponseError> {
+    // secret key
     let external_key = generate_external_key(
         secret_settings.encryption.clone(),
         &state.get_config().default_secret_key,
     );
-
     let secret_key = hkdf::string_into_256_bit_key(external_key.clone())?;
 
+    // topic key
     let topic_key = hkdf::string_into_256_bit_key(primary_topic_key)?;
 
+    // storage key
     let storage = state.get_storage_read().await;
     let storage_key = storage.get_encryption_key()?;
 
+    // keyset: storage + topic
     let topic_keyset = StorageAndTopicKeys {
         storage_key,
         topic_key: &topic_key,
     };
 
+    // DAO objects
     let db = state.get_db_conn();
     let topic_dao = topics::TopicDao::new(db.clone());
     let secret_dao = secrets::SecretDao::new(db);
 
+    // find topic by name
     let mut topic = topic_dao.find_by_name(&topic_name).await?;
     topic.check_integrity(&topic_keyset)?;
 
+    // keyset: storage + topic + secret
     let secret_keyset = StorageTopicAndSecretKeys {
         storage_key,
         topic_key: &topic_key,
         secret_key: &secret_key,
     };
 
+    // create secret structure and add to topic
     let secret = secrets::SecretDto::new(
         secret_name,
         secret_settings.value,
@@ -161,6 +168,7 @@ async fn create_secret(
     }
     topic.add_hashed_secret_name(secret.hashed_name.clone(), &topic_keyset)?;
 
+    // save topic with new secret to database
     let hashed_secret_name = secret.hashed_name.clone();
     let hashed_topic_name = topic.hashed_name.clone();
 
