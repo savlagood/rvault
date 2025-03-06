@@ -1,7 +1,4 @@
-use crate::{
-    http::{auth, secrets, storage, topics},
-    state::AppState,
-};
+use crate::{http::handlers, state::AppState};
 use anyhow::{Context, Result};
 use axum::{http::header::AUTHORIZATION, Router};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -35,18 +32,18 @@ pub fn create_router(app_state: AppState) -> Router {
         .nest(
             "/api",
             Router::new()
-                .nest("/auth", auth::handlers::create_router(app_state.clone()))
+                .nest("/auth", handlers::auth::create_router(app_state.clone()))
                 .nest(
                     "/storage",
-                    storage::handlers::create_router(app_state.clone()),
+                    handlers::storage::create_router(app_state.clone()),
                 )
                 .nest(
                     "/topics",
-                    topics::handlers::create_router(app_state.clone()),
+                    handlers::topics::create_router(app_state.clone()),
                 )
                 .nest(
                     "/topics/:topic_name/secrets",
-                    secrets::handlers::create_router(app_state.clone()),
+                    handlers::secrets::create_router(app_state.clone()),
                 ),
         )
         .layer((

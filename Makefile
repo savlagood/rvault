@@ -1,5 +1,7 @@
 .PHONY: format clippy docker-up
 
+TEST_THREADS ?= 4
+
 check: format clippy
 	cargo check
 
@@ -16,10 +18,10 @@ run-debug: docker-up format
 	cargo run
 
 test-verbose: docker-up format
-	cargo test -- --test-threads=1 --nocapture --color=always
+	cargo test -- --test-threads=$(TEST_THREADS) --nocapture --color=always
 
 test: docker-up format
-	cargo test -- --test-threads=1 --color=always
+	cargo test -- --test-threads=$(TEST_THREADS) --color=always
 
 docker-up:
 	docker-compose -f docker-compose.yml up -d

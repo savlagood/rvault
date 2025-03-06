@@ -1,6 +1,6 @@
 use crate::{
-    crypto::hkdf::HkdfError, http::jwt_tokens::TokenError, policies::PoliciesError,
-    secrets::SecretError, storage::StorageError, topics::TopicError,
+    http::jwt_tokens::TokenError, policies::PoliciesError, secrets::SecretError,
+    storage::StorageError, topics::TopicError, utils::hkdf::HkdfError,
 };
 use axum::{
     http::StatusCode,
@@ -21,6 +21,8 @@ impl ErrorMessage {
         Self { message }
     }
 }
+
+const INTERNAL_STORAGE_ERROR: &str = "Internal Storage Error";
 
 #[derive(Debug, Error)]
 pub enum ResponseError {
@@ -88,15 +90,18 @@ impl IntoResponse for ResponseError {
             },
 
             ResponseError::Storage(err) => match err {
-                StorageError::StorageCorrupted => {
-                    error!("Storage data has been corrupted!");
-                    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                StorageError::StorageCorrupted(_) => {
+                    error!("Storage data has been corrupted: {err:?}");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        String::from(INTERNAL_STORAGE_ERROR),
+                    )
                 }
                 StorageError::InternalStorage(err) => {
                     error!("Internal storage error: {err:?}");
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        "Internal Storage Error".to_string(),
+                        String::from(INTERNAL_STORAGE_ERROR),
                     )
                 }
                 StorageError::InvalidStorageState {

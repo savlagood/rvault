@@ -1,7 +1,12 @@
-use crate::{config::Config, database::MongoDb, storage::Storage};
+use crate::{config::Config, database::DbConn, storage::Storage};
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+#[cfg(not(test))]
+use crate::database::builder::build_db_connection;
+#[cfg(test)]
+use crate::database::builder::build_test_db_connection;
 
 #[derive(Clone)]
 pub struct AppState(Arc<StateData>);
@@ -10,15 +15,24 @@ impl AppState {
     pub async fn setup() -> Result<Self> {
         let config = Config::setup().context("Failed to setup configuration")?;
 
-        let db = Arc::new(MongoDb::setup_with_connection_str(&config.db_connection_string).await?);
+        #[cfg(not(test))]
+        let connection = build_db_connection(&config)
+            .await
+            .context("Failed to setup db connection")?;
+        #[cfg(test)]
+        let connection = build_test_db_connection(&config)
+            .await
+            .context("Failed to setup db connection")?;
 
-        let storage = Storage::setup(db.clone())
+        let db_conn = Arc::new(connection);
+
+        let storage = Storage::setup(db_conn.clone())
             .await
             .expect("Failed to initialize storage");
 
         let state_data = Arc::new(StateData {
             config: Arc::new(config),
-            db,
+            db_conn,
             storage: Arc::new(RwLock::new(storage)),
         });
 
@@ -29,8 +43,8 @@ impl AppState {
         &self.0.config
     }
 
-    pub fn get_db(&self) -> Arc<MongoDb> {
-        self.0.db.clone()
+    pub fn get_db_conn(&self) -> Arc<DbConn> {
+        self.0.db_conn.clone()
     }
 
     pub async fn get_storage_read(&self) -> RwLockReadGuard<'_, Storage> {
@@ -50,6 +64,6 @@ impl AsRef<AppState> for AppState {
 
 struct StateData {
     config: Arc<Config>,
-    db: Arc<MongoDb>,
+    db_conn: Arc<DbConn>,
     storage: Arc<RwLock<Storage>>,
 }

@@ -1,5 +1,4 @@
 mod config;
-mod crypto;
 mod database;
 mod http;
 mod models;
@@ -8,11 +7,12 @@ mod secrets;
 mod state;
 mod storage;
 mod topics;
+mod utils;
 
 use anyhow::Context;
 
 #[cfg(test)]
-mod tests;
+mod api_tests;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

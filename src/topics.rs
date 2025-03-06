@@ -1,11 +1,12 @@
 use crate::{
-    crypto::{
-        self,
-        aes::{Aes256Cipher, AesError},
-    },
-    database::{DatabaseError, MongoDb},
+    database::{DatabaseError, DbConn},
     models::StorageAndTopicKeys,
     storage::StorageError,
+    utils::{
+        aes::{Aes256Cipher, AesError},
+        base64,
+        common::{encrypt_string_base64, hash_string_base64},
+    },
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
@@ -38,7 +39,7 @@ pub enum TopicError {
 
 fn decrypt_value(cipher: &Aes256Cipher, encrypted_value: String) -> Result<String, TopicError> {
     let encrypted_value_bytes =
-        crypto::base64::decode(encrypted_value).map_err(|_| TopicError::TopicCorrupted)?;
+        base64::decode(encrypted_value).map_err(|_| TopicError::TopicCorrupted)?;
     let decrypted_value_bytes = cipher
         .decrypt(&encrypted_value_bytes)
         .map_err(|_| TopicError::TopicCorrupted)?;
@@ -50,11 +51,11 @@ fn decrypt_value(cipher: &Aes256Cipher, encrypted_value: String) -> Result<Strin
 }
 
 pub struct TopicDao {
-    db: Arc<MongoDb>,
+    db: Arc<DbConn>,
 }
 
 impl TopicDao {
-    pub fn new(db: Arc<MongoDb>) -> Self {
+    pub fn new(db: Arc<DbConn>) -> Self {
         Self { db }
     }
 
@@ -66,7 +67,7 @@ impl TopicDao {
     }
 
     pub async fn update(&self, topic: TopicDto) -> Result<(), TopicError> {
-        self.db.update_topic(topic).await.map_err(|err| match err {
+        self.db.update_topic(&topic).await.map_err(|err| match err {
             DatabaseError::NotFound => TopicError::NotFound,
             _ => TopicError::Database(err),
         })
@@ -79,7 +80,7 @@ impl TopicDao {
         let cipher =
             Aes256Cipher::new(storage_key).map_err(TopicError::InvalidStorageEncryptionKey)?;
 
-        let encrypted_topic_names = self.db.fetch_topic_names().await?;
+        let encrypted_topic_names = self.db.fetch_encrypted_topic_names().await?;
 
         let mut topic_names = HashSet::with_capacity(encrypted_topic_names.len());
         for encrypted_name in encrypted_topic_names {
@@ -91,7 +92,7 @@ impl TopicDao {
     }
 
     pub async fn find_by_name(&self, name: &str) -> Result<TopicDto, TopicError> {
-        let hashed_name = crypto::hash_string_base64(name);
+        let hashed_name = hash_string_base64(name);
         self.find_by_hashed_name(&hashed_name).await
     }
 
@@ -117,9 +118,9 @@ pub struct TopicDto {
 
 impl TopicDto {
     pub fn new(name: String, keyset: &StorageAndTopicKeys) -> Result<Self, TopicError> {
-        let hashed_name = crypto::hash_string_base64(&name);
+        let hashed_name = hash_string_base64(&name);
 
-        let encrypted_name = crypto::encrypt_string_base64(&name, keyset.storage_key)
+        let encrypted_name = encrypt_string_base64(&name, keyset.storage_key)
             .map_err(TopicError::InvalidStorageEncryptionKey)?;
 
         let mut topic_dto = Self {
@@ -183,7 +184,7 @@ impl TopicDto {
         }
 
         let checksum_bytes = hasher.finalize().to_vec();
-        let encoded_base64_checksum = crypto::base64::encode(&checksum_bytes);
+        let encoded_base64_checksum = base64::encode(&checksum_bytes);
 
         Ok(encoded_base64_checksum)
     }

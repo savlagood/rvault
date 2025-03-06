@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 aes-gcm = "0.10.3"
 anyhow = "1.0.94"
+async-trait = "0.1.86"
 axum = "0.7.9"
 axum-extra = { version = "0.9.6", features = ["typed-header"] }
 base64 = "0.22.1"

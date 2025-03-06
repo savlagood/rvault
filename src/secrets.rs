@@ -1,10 +1,11 @@
 use crate::{
-    crypto::{
-        self,
-        aes::{Aes256Cipher, AesError},
-    },
-    database::{DatabaseError, MongoDb},
+    database::{DatabaseError, DbConn},
     models::StorageTopicAndSecretKeys,
+    utils::aes::{Aes256Cipher, AesError},
+    utils::{
+        base64,
+        common::{encrypt_string_base64, hash_string_base64},
+    },
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
@@ -34,7 +35,7 @@ pub enum SecretError {
 
 fn decrypt_value(cipher: &Aes256Cipher, encrypted_value: String) -> Result<String, SecretError> {
     let encrypted_value_bytes =
-        crypto::base64::decode(encrypted_value).map_err(|_| SecretError::SecretCorrupted)?;
+        base64::decode(encrypted_value).map_err(|_| SecretError::SecretCorrupted)?;
     let decrypted_value_bytes = cipher
         .decrypt(&encrypted_value_bytes)
         .map_err(|_| SecretError::SecretCorrupted)?;
@@ -45,11 +46,11 @@ fn decrypt_value(cipher: &Aes256Cipher, encrypted_value: String) -> Result<Strin
     Ok(String::from(value))
 }
 pub struct SecretDao {
-    db: Arc<MongoDb>,
+    db: Arc<DbConn>,
 }
 
 impl SecretDao {
-    pub fn new(db: Arc<MongoDb>) -> Self {
+    pub fn new(db: Arc<DbConn>) -> Self {
         Self { db }
     }
 
@@ -71,7 +72,10 @@ impl SecretDao {
         let cipher = Aes256Cipher::new(storage_key)
             .map_err(|err| SecretError::InvalidStorageKey(err.to_string()))?;
 
-        let encrypted_secret_names = self.db.fetch_secret_names(hashed_topic_name).await?;
+        let encrypted_secret_names = self
+            .db
+            .fetch_topic_encrypted_secret_names(hashed_topic_name)
+            .await?;
 
         let mut secret_names = HashSet::with_capacity(encrypted_secret_names.len());
         for encrypted_name in encrypted_secret_names {
@@ -103,8 +107,8 @@ impl SecretDto {
         hashed_topic_name: String,
         keyset: &StorageTopicAndSecretKeys,
     ) -> Result<Self, SecretError> {
-        let hashed_name = crypto::hash_string_base64(&name);
-        let encrypted_name = crypto::encrypt_string_base64(&name, keyset.storage_key)
+        let hashed_name = hash_string_base64(&name);
+        let encrypted_name = encrypt_string_base64(&name, keyset.storage_key)
             .map_err(|err| SecretError::InvalidStorageKey(err.to_string()))?;
 
         let encrypted_value = Self::encrypt_secret_value(value, keyset)?;
@@ -129,10 +133,10 @@ impl SecretDto {
         value: String,
         keyset: &StorageTopicAndSecretKeys,
     ) -> Result<String, SecretError> {
-        let encrypted_with_topic_key = crypto::encrypt_string_base64(&value, keyset.topic_key)
+        let encrypted_with_topic_key = encrypt_string_base64(&value, keyset.topic_key)
             .map_err(|err| SecretError::InvalidTopicKey(err.to_string()))?;
         let encrypted_with_secret_key =
-            crypto::encrypt_string_base64(&encrypted_with_topic_key, keyset.secret_key)
+            encrypt_string_base64(&encrypted_with_topic_key, keyset.secret_key)
                 .map_err(|err| SecretError::InvalidSecretKey(err.to_string()))?;
 
         Ok(encrypted_with_secret_key)
@@ -165,7 +169,7 @@ impl SecretDto {
         }
 
         let checksum_bytes = hasher.finalize().to_vec();
-        let encoded_base64_checksum = crypto::base64::encode(&checksum_bytes);
+        let encoded_base64_checksum = base64::encode(&checksum_bytes);
 
         Ok(encoded_base64_checksum)
     }

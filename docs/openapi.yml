@@ -1,7 +1,7 @@
 openapi: 3.0.2
 info:
-  title: 'rvault - secrets storage'
-  version: '0.0.1'
+  title: "rvault - secrets storage"
+  version: "0.0.1"
 
 servers:
   - url: http://localhost:9200/api/
@@ -27,23 +27,23 @@ paths:
               required:
                 - root_token
       responses:
-        '200':
+        "200":
           description: Successfully generated tokens.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenPair"
-        '401':
+        "401":
           description: Unauthorized access. Invalid or missing root token.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '422':
+        "422":
           $ref: "#/components/responses/UnprocessableEntity"
-        '500':
+        "500":
           $ref: "#/components/responses/InternalServerError"
-  
+
   /auth/token/issue/user:
     post:
       summary: Issue User Tokens
@@ -77,27 +77,27 @@ paths:
                         type: string
                         enum: [create, read, update, delete]
       responses:
-        '200':
+        "200":
           description: Successfully issued tokens
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenPair"
-        '400':
+        "400":
           description: Bad Request - Invalid request payload.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '401':
+        "401":
           description: Unauthorized - Invalid or missing token.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '422':
+        "422":
           $ref: "#/components/responses/UnprocessableEntity"
-        '500':
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /auth/token/refresh:
@@ -123,27 +123,27 @@ paths:
                 - access_token
                 - refresh_token
       responses:
-        '200':
+        "200":
           description: Successfully refreshed tokens.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TokenPair"
-        '400':
+        "400":
           description: Bad Request - Invalid or expired refresh token.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '401':
+        "401":
           description: Unauthorized - Missing or malformed token.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '422':
+        "422":
           $ref: "#/components/responses/UnprocessableEntity"
-        '500':
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /storage/init:
@@ -167,27 +167,27 @@ paths:
                   type: integer
                   description: Total number of key shards.
       responses:
-        '200':
+        "200":
           description: Initialization completed successfully.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SharedKeys"
-        '400':
+        "400":
           description: Bad request - storage is already initialized.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '401':
+        "401":
           description: Unauthorized - Missing or malformed token.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '422':
+        "422":
           $ref: "#/components/responses/UnprocessableEntity"
-        '500':
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /storage/unseal:
@@ -204,23 +204,23 @@ paths:
             schema:
               $ref: "#/components/schemas/SharedKeys"
       responses:
-        '200':
+        "200":
           description: Successfully unsealed storage.
-        '400':
+        "400":
           description: Bad request - invalid shared keys.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '401':
+        "401":
           description: Unauthorized - Missing or malformed token.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '422':
+        "422":
           $ref: "#/components/responses/UnprocessableEntity"
-        '500':
+        "500":
           $ref: "#/components/responses/InternalServerError"
 
   /storage/seal:
@@ -231,25 +231,254 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        '200':
+        "200":
           description: Successfully sealed storage.
-        '400':
+        "400":
           description: Bad request - storage is already sealed.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '401':
+        "401":
           description: Unauthorized - Missing or malformed token.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        '422':
+        "422":
           $ref: "#/components/responses/UnprocessableEntity"
-        '500':
+        "500":
           $ref: "#/components/responses/InternalServerError"
-    
+
+  /topics:
+    get:
+      summary: List Topics
+      description: |
+        Returns a list of all topic names available
+        to the admin (only for admin).
+      tags:
+        - Topics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of topics retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicNames"
+        "400":
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - missing or invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - insufficient permissions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /topics/{topic_name}:
+    post:
+      summary: Create Topic
+      description: Creates a new topic with the specified name and encryption settings.
+      tags:
+        - Topics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: topic_name
+          in: path
+          required: true
+          description: Name of the topic to create.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopicSettings"
+      responses:
+        "201":
+          description: Topic created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopicEncryptionKey"
+        "400":
+          description: Bad request - invalid topic name or storage not unsealed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - missing or invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - insufficient permissions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Conflict - topic already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /topics/{topic_name}/secrets:
+    get:
+      summary: List Secrets
+      description: Returns a list of all secret names in the specified topic.
+      tags:
+        - Secrets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: topic_name
+          in: path
+          required: true
+          description: Name of the topic containing the secrets.
+          schema:
+            type: string
+        - name: x-rvault-topic-key
+          in: header
+          required: false
+          description: The encryption key for the topic (required for encrypted topics).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of secrets retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretNames"
+        "400":
+          description: Bad request - storage is not unsealed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - missing or invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - insufficient permissions or invalid topic key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found - topic does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /topics/{topic_name}/secrets/{secret_name}:
+    post:
+      summary: Create Secret
+      description: Creates a new secret within the specified topic.
+      tags:
+        - Secrets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: topic_name
+          in: path
+          required: true
+          description: Name of the topic where the secret will be created.
+          schema:
+            type: string
+        - name: secret_name
+          in: path
+          required: true
+          description: Name of the secret to create.
+          schema:
+            type: string
+        - name: x-rvault-topic-key
+          in: header
+          required: false
+          description: The encryption key for the topic (required for encrypted topics).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SecretSettings"
+      responses:
+        "201":
+          description: Secret created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretEncryptionKey"
+        "400":
+          description: Bad request - invalid secret name or storage not unsealed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - missing or invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - insufficient permissions or invalid topic key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found - topic does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Conflict - secret already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -282,7 +511,7 @@ components:
         refresh_token:
           type: string
           description: The refresh token.
-    
+
     SharedKeys:
       type: object
       properties:
@@ -292,9 +521,95 @@ components:
           items:
             type: string
 
+    TopicNames:
+      type: object
+      properties:
+        names:
+          type: array
+          description: List of topic names.
+          items:
+            type: string
+
+    TopicSettings:
+      type: object
+      properties:
+        encryption:
+          oneOf:
+            - type: object
+              required:
+                - mode
+              properties:
+                mode:
+                  type: string
+                  enum: [none, generate]
+            - type: object
+              required:
+                - mode
+                - key
+              properties:
+                mode:
+                  type: string
+                  enum: [provided]
+                key:
+                  type: string
+                  description: The encryption key to use.
+
+    TopicEncryptionKey:
+      type: object
+      properties:
+        topic_key:
+          type: string
+          description: The encryption key for the topic. Only returned for 'generate' and 'provided' modes.
+
     Error:
       type: object
       properties:
         error:
           type: string
           description: Error message.
+
+    SecretNames:
+      type: object
+      properties:
+        names:
+          type: array
+          description: List of secret names.
+          items:
+            type: string
+
+    SecretSettings:
+      type: object
+      required:
+        - value
+        - encryption
+      properties:
+        value:
+          type: string
+          description: The secret value to store.
+        encryption:
+          oneOf:
+            - type: object
+              required:
+                - mode
+              properties:
+                mode:
+                  type: string
+                  enum: [none, generate]
+            - type: object
+              required:
+                - mode
+                - key
+              properties:
+                mode:
+                  type: string
+                  enum: [provided]
+                key:
+                  type: string
+                  description: The encryption key to use.
+
+    SecretEncryptionKey:
+      type: object
+      properties:
+        secret_key:
+          type: string
+          description: The encryption key for the secret. Only returned for 'generate' and 'provided' modes.

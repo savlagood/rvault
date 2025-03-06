@@ -1,10 +1,10 @@
 use crate::{
-    crypto::{
-        self,
-        aes::Aes256Cipher,
+    database::DbConn,
+    utils::aes::Aes256Cipher,
+    utils::{
+        common::generate_256_bit_key,
         shared_keys::{SharedKeys, SharedKeysError, SharedKeysSettings},
     },
-    database::MongoDb,
 };
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
@@ -13,8 +13,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
-    #[error("The storage data has been corrupted")]
-    StorageCorrupted,
+    #[error("Storage data has been corrupted: {0}")]
+    StorageCorrupted(String),
 
     #[error("Invalid storage state: expected {expected:?}, but current {current:?}")]
     InvalidStorageState {
@@ -65,19 +65,21 @@ impl StorageDto {
             return Ok(StorageState::Sealed);
         }
 
-        Err(StorageError::StorageCorrupted)
+        Err(StorageError::StorageCorrupted(String::from(
+            "Storage from DTO cannot be unsealed",
+        )))
     }
 }
 
 pub struct Storage {
-    db: Arc<MongoDb>,
+    db: Arc<DbConn>,
     shared_keys_settings: Option<SharedKeysSettings>,
     encryption_key: Option<Vec<u8>>,
     encrypted_encryption_key: Option<Vec<u8>>,
 }
 
 impl Storage {
-    pub async fn setup(db: Arc<MongoDb>) -> Result<Self, StorageError> {
+    pub async fn setup(db: Arc<DbConn>) -> Result<Self, StorageError> {
         let storage_dto = db
             .read_storage()
             .await
@@ -88,41 +90,45 @@ impl Storage {
     }
 
     fn setup_storage_from_dto(
-        db: Arc<MongoDb>,
+        db: Arc<DbConn>,
         storage_dto: StorageDto,
     ) -> Result<Self, StorageError> {
         let storage = match storage_dto.determine_state()? {
             StorageState::Sealed => Self::setup_sealed_storage(db, storage_dto)?,
             StorageState::Uninitialized => Self::setup_uninitialized_storage(db)?,
-            _ => return Err(StorageError::StorageCorrupted),
+            _ => {
+                return Err(StorageError::StorageCorrupted(String::from(
+                    "Storage from DTO cannot be unsealed",
+                )))
+            }
         };
 
         Ok(storage)
     }
 
     fn setup_sealed_storage(
-        db: Arc<MongoDb>,
+        db: Arc<DbConn>,
         storage_dto: StorageDto,
     ) -> Result<Self, StorageError> {
         let storage = Self {
             db,
-            shared_keys_settings: Some(
-                storage_dto
-                    .shared_keys_settings
-                    .ok_or(StorageError::StorageCorrupted)?,
-            ),
+            shared_keys_settings: Some(storage_dto.shared_keys_settings.ok_or(
+                StorageError::StorageCorrupted(String::from(
+                    "Shared keys settings required for sealed storage setup",
+                )),
+            )?),
             encryption_key: None,
-            encrypted_encryption_key: Some(
-                storage_dto
-                    .encrypted_encryption_key
-                    .ok_or(StorageError::StorageCorrupted)?,
-            ),
+            encrypted_encryption_key: Some(storage_dto.encrypted_encryption_key.ok_or(
+                StorageError::StorageCorrupted(String::from(
+                    "Encrypted encryption key required for sealed storage setup",
+                )),
+            )?),
         };
 
         Ok(storage)
     }
 
-    fn setup_uninitialized_storage(db: Arc<MongoDb>) -> Result<Self, StorageError> {
+    fn setup_uninitialized_storage(db: Arc<DbConn>) -> Result<Self, StorageError> {
         let storage = Self {
             db,
             shared_keys_settings: None,
@@ -138,7 +144,9 @@ impl Storage {
 
         self.encryption_key
             .as_ref()
-            .ok_or(StorageError::StorageCorrupted)
+            .ok_or(StorageError::StorageCorrupted(String::from(
+                "Fielt encryption_key required in current state",
+            )))
     }
 
     pub async fn initialize(
@@ -148,10 +156,10 @@ impl Storage {
         self.ensure_state_is(StorageState::Uninitialized)?;
         shared_keys_settings.assert_valid()?;
 
-        let root_key = crypto::generate_256_bit_key();
+        let root_key = generate_256_bit_key();
         let cipher = Aes256Cipher::new(&root_key).context("Failed to create cipher")?;
 
-        let encryption_key = crypto::generate_256_bit_key();
+        let encryption_key = generate_256_bit_key();
         let encrypted_encryption_key = cipher
             .encrypt(&encryption_key)
             .context("Failed to encrypt encryption_key")?;
@@ -169,18 +177,22 @@ impl Storage {
     pub async fn unseal(&mut self, shared_keys: SharedKeys) -> Result<(), StorageError> {
         self.ensure_state_is(StorageState::Sealed)?;
 
-        let shared_keys_settings = self
-            .shared_keys_settings
-            .as_ref()
-            .ok_or(StorageError::StorageCorrupted)?;
+        let shared_keys_settings =
+            self.shared_keys_settings
+                .as_ref()
+                .ok_or(StorageError::StorageCorrupted(String::from(
+                    "Field shared_keys_settings required in current state",
+                )))?;
         let root_key = shared_keys.into_key(shared_keys_settings.threshold)?;
 
         let cipher = Aes256Cipher::new(&root_key).context("Failed to create cipher")?;
 
-        let encrypted_encryption_key = self
-            .encrypted_encryption_key
-            .as_ref()
-            .ok_or(StorageError::StorageCorrupted)?;
+        let encrypted_encryption_key =
+            self.encrypted_encryption_key
+                .as_ref()
+                .ok_or(StorageError::StorageCorrupted(String::from(
+                    "Field encrypted_encryption_key required in current state",
+                )))?;
         let encryption_key = cipher
             .decrypt(encrypted_encryption_key)
             .map_err(|_| StorageError::InvalidSharedKeys("Invalid shared keys".to_string()))?;
@@ -228,7 +240,9 @@ impl Storage {
             return Ok(StorageState::Unsealed);
         }
 
-        Err(StorageError::StorageCorrupted)
+        Err(StorageError::StorageCorrupted(String::from(
+            "Storage state cannot be determined",
+        )))
     }
 
     async fn save_db(&self) -> Result<(), StorageError> {

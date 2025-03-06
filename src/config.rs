@@ -1,14 +1,14 @@
+use crate::utils::common::get_env_var_required;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::Path, str::FromStr, time::Duration};
+use std::{fs, io::Write, path::Path, time::Duration};
 
-const CONFIG_FILEPATH: &str = "./rvault_data/storage.yaml";
-
+const ENV_CONFIG: &str = "RVAULT_CONFIG";
 const ENV_ROOT_TOKEN: &str = "RVAULT_ROOT_TOKEN";
 const ENV_AUTH_SECRET: &str = "RVAULT_AUTH_SECRET";
-const ENV_DB_CONNECTION_STRING: &str = "RVAULT_DB_CONNECTION_STRING";
 const ENV_DEFAULT_TOPIC_KEY: &str = "RVAULT_DEFAULT_TOPIC_KEY";
 const ENV_DEFAULT_SECRET_KEY: &str = "RVAULT_DEFAULT_SECRET_KEY";
+const ENV_DB_TYPE: &str = "RVAULT_DB_TYPE";
 
 fn check_directory_existence(path: &Path) -> Result<()> {
     if !path.exists() {
@@ -16,15 +16,6 @@ fn check_directory_existence(path: &Path) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn get_env_var<T: FromStr>(key: &str) -> Result<T> {
-    let value = std::env::var(key).context(format!("Environment vaiable {:?} is required", key))?;
-
-    let result = value
-        .parse::<T>()
-        .map_err(|_| anyhow::anyhow!("Failed to parse environment variable {}", key))?;
-    Ok(result)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -93,19 +84,19 @@ impl YamlConfigData {
 struct EnvConfigData {
     root_token: String,
     jwt_secret: String,
-    db_connection_string: String,
     default_topic_key: String,
     default_secret_key: String,
+    db_type: String,
 }
 
 impl EnvConfigData {
     fn load_from_env() -> Result<Self> {
         Ok(Self {
-            root_token: get_env_var(ENV_ROOT_TOKEN)?,
-            jwt_secret: get_env_var(ENV_AUTH_SECRET)?,
-            db_connection_string: get_env_var(ENV_DB_CONNECTION_STRING)?,
-            default_topic_key: get_env_var(ENV_DEFAULT_TOPIC_KEY)?,
-            default_secret_key: get_env_var(ENV_DEFAULT_SECRET_KEY)?,
+            root_token: get_env_var_required(ENV_ROOT_TOKEN)?,
+            jwt_secret: get_env_var_required(ENV_AUTH_SECRET)?,
+            default_topic_key: get_env_var_required(ENV_DEFAULT_TOPIC_KEY)?,
+            default_secret_key: get_env_var_required(ENV_DEFAULT_SECRET_KEY)?,
+            db_type: get_env_var_required(ENV_DB_TYPE)?,
         })
     }
 }
@@ -119,14 +110,15 @@ pub struct Config {
 
     pub root_token: String,
     pub jwt_secret: String,
-    pub db_connection_string: String,
     pub default_topic_key: String,
     pub default_secret_key: String,
+    pub db_type: String,
 }
 
 impl Config {
     pub fn setup() -> Result<Self> {
-        let yaml_config_path = Path::new(CONFIG_FILEPATH);
+        let config_filepath: String = get_env_var_required(ENV_CONFIG)?;
+        let yaml_config_path = Path::new(&config_filepath);
 
         let yaml_config_data = YamlConfigData::load(yaml_config_path)?;
         let env_config_data = EnvConfigData::load_from_env()?;
@@ -160,9 +152,9 @@ impl Config {
 
             root_token: env_config.root_token,
             jwt_secret: env_config.jwt_secret,
-            db_connection_string: env_config.db_connection_string,
             default_topic_key: env_config.default_topic_key,
             default_secret_key: env_config.default_secret_key,
+            db_type: env_config.db_type,
         };
 
         Ok(config)

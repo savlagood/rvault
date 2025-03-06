@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 #[serde(tag = "mode", content = "key")]
 pub enum Encryption {
     #[serde(rename = "none")]
@@ -68,6 +68,15 @@ pub mod http {
         #[derive(Serialize)]
         pub struct SecretNames {
             pub names: HashSet<String>,
+        }
+    }
+
+    pub mod auth {
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        pub struct TokenRequest {
+            pub token: String,
         }
     }
 }
