@@ -12,6 +12,7 @@ pub enum RequestMethod {
     Get,
     Post,
     Put,
+    Delete,
 }
 
 #[derive(Clone)]
@@ -93,5 +94,12 @@ pub fn update_secret(topic_name: &str, secret_name: &str) -> Endpoint {
     Endpoint {
         path: format!("api/topics/{}/secrets/{}", topic_name, secret_name),
         method: RequestMethod::Put,
+    }
+}
+
+pub fn delete_secret(topic_name: &str, secret_name: &str) -> Endpoint {
+    Endpoint {
+        path: format!("api/topics/{}/secrets/{}", topic_name, secret_name),
+        method: RequestMethod::Delete,
     }
 }

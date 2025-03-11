@@ -49,7 +49,7 @@ async fn test_update_as_admin() {
             .await;
 
         // checking
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let updated_secret_value = client.fetch_secret(TOPIC_NAME, SECRET_NAME, headers).await;
         assert_eq!(
             updated_secret_value,
@@ -102,7 +102,7 @@ async fn test_update_as_user() {
             .await;
 
         // checking
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let updated_secret_value = client.fetch_secret(TOPIC_NAME, SECRET_NAME, headers).await;
         assert_eq!(
             updated_secret_value,
@@ -318,7 +318,7 @@ async fn test_multiple_updates_with_version_tracking() {
             .await;
 
         // checking first update
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let updated_secret_value = client
             .fetch_secret(TOPIC_NAME, SECRET_NAME, headers.clone())
             .await;
@@ -343,7 +343,7 @@ async fn test_multiple_updates_with_version_tracking() {
             .await;
 
         // checking second update
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let updated_secret_value = client.fetch_secret(TOPIC_NAME, SECRET_NAME, headers).await;
         assert_eq!(
             updated_secret_value,

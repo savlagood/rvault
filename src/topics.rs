@@ -171,6 +171,18 @@ impl TopicDto {
         Ok(())
     }
 
+    pub fn remove_hashed_secret_name(
+        &mut self,
+        name: String,
+        keyset: &StorageAndTopicKeys,
+    ) -> Result<(), TopicError> {
+        self.secret_hashed_names.retain(|x| x != &name);
+        self.update_checksum(keyset)
+            .map_err(TopicError::InvalidStorageEncryptionKey)?;
+
+        Ok(())
+    }
+
     fn update_checksum(&mut self, keyset: &StorageAndTopicKeys) -> Result<(), AesError> {
         self.checksum = self.calculate_checksum(keyset)?;
         Ok(())

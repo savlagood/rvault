@@ -80,6 +80,20 @@ impl SecretDao {
             })
     }
 
+    pub async fn delete(
+        &self,
+        hashed_topic_name: &str,
+        hashed_name: &str,
+    ) -> Result<(), SecretError> {
+        self.db
+            .delete_secret(hashed_topic_name, hashed_name)
+            .await
+            .map_err(|err| match err {
+                DatabaseError::NotFound => SecretError::NotFound,
+                _ => SecretError::Database(err),
+            })
+    }
+
     pub async fn fetch_secret_names(
         &self,
         hashed_topic_name: &str,

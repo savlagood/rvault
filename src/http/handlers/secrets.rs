@@ -33,7 +33,8 @@ pub fn create_router(app_state: AppState) -> Router {
             "/:secret_name",
             post(create_secret_handler)
                 .get(read_secret_handler)
-                .put(update_secret_handler),
+                .put(update_secret_handler)
+                .delete(delete_secret_handler),
         )
         .with_state(app_state)
 }
@@ -284,7 +285,7 @@ async fn update_secret_handler(
     Path((topic_name, secret_name)): Path<(String, String)>,
     State(state): State<AppState>,
     Json(update_request): Json<SecretUpdateRequest>,
-) -> Result<(), ResponseError> {
+) -> Result<StatusCode, ResponseError> {
     // checks
     let policies = claims.policies;
     policies.ensure_topic_access_permitted(&topic_name, Permission::Read)?;
@@ -310,7 +311,7 @@ async fn update_secret_handler(
     )
     .await?;
 
-    Ok(())
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn update_secret_value(
@@ -358,6 +359,98 @@ async fn update_secret_value(
 
     secret.update_secret_value(new_value, &secret_keyset)?;
     secret_dao.update(&secret).await?;
+
+    Ok(())
+}
+
+async fn delete_secret_handler(
+    claims: AccessTokenClaims,
+    TypedHeader(topic_key_header): TypedHeader<TopicKeyHeader>,
+    TypedHeader(secret_key_header): TypedHeader<SecretKeyHeader>,
+    Path((topic_name, secret_name)): Path<(String, String)>,
+    State(state): State<AppState>,
+) -> Result<StatusCode, ResponseError> {
+    // checks
+    let policies = claims.policies;
+    policies.ensure_topic_access_permitted(&topic_name, Permission::Update)?;
+    policies.ensure_secret_access_permitted(&topic_name, &secret_name, Permission::Delete)?;
+
+    validators::ensure_storage_is_unsealed(state.clone()).await?;
+
+    // actions
+    let external_topic_key = topic_key_header
+        .value
+        .unwrap_or(state.get_config().default_topic_key.clone());
+    let external_secret_key = secret_key_header
+        .value
+        .unwrap_or(state.get_config().default_secret_key.clone());
+
+    delete_secret_value(
+        topic_name,
+        secret_name,
+        external_topic_key,
+        external_secret_key,
+        state,
+    )
+    .await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_secret_value(
+    topic_name: String,
+    secret_name: String,
+    external_topic_key: String,
+    external_secret_key: String,
+    state: AppState,
+) -> Result<(), ResponseError> {
+    let storage = state.get_storage_read().await;
+
+    // keys
+    let storage_key = storage.get_encryption_key()?;
+    let topic_key = hkdf::string_into_256_bit_key(external_topic_key)?;
+    let secret_key = hkdf::string_into_256_bit_key(external_secret_key)?;
+
+    // DAO objects
+    let db = state.get_db_conn();
+    let topic_dao = TopicDao::new(db.clone());
+    let secret_dao = SecretDao::new(db);
+
+    // getting topic
+    let topic_keyset = StorageAndTopicKeys {
+        storage_key,
+        topic_key: &topic_key,
+    };
+    let mut topic = topic_dao.find_by_name(&topic_name).await?;
+    topic.check_integrity(&topic_keyset)?;
+
+    if !topic.contains_secret_name(&secret_name) {
+        return Err(ResponseError::Secret(SecretError::NotFound));
+    }
+
+    // getting secret
+    let secret_keyset = StorageTopicAndSecretKeys {
+        storage_key,
+        topic_key: &topic_key,
+        secret_key: &secret_key,
+    };
+    let secret = secret_dao
+        .find_by_name(&topic.hashed_name, &secret_name)
+        .await?;
+    secret.check_integrity(&secret_keyset)?;
+
+    // performing delete operation
+    let hashed_topic_name = topic.hashed_name.clone();
+    let hashed_secret_name = secret.hashed_name.clone();
+
+    secret_dao
+        .delete(&hashed_topic_name, &hashed_secret_name)
+        .await?;
+
+    topic.remove_hashed_secret_name(secret.hashed_name, &topic_keyset)?;
+    topic_dao.update(topic).await?;
+
+    info!("Secret {hashed_secret_name} in the topic {hashed_topic_name} successfully deleted");
 
     Ok(())
 }

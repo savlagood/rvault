@@ -85,6 +85,7 @@ impl<'a> RequestBuilder<'a> {
             RequestMethod::Get => self.client.get(url),
             RequestMethod::Post => self.client.post(url),
             RequestMethod::Put => self.client.put(url),
+            RequestMethod::Delete => self.client.delete(url),
         };
 
         // headers
