@@ -70,6 +70,16 @@ impl SecretDao {
             })
     }
 
+    pub async fn update(&self, secret: &SecretDto) -> Result<(), SecretError> {
+        self.db
+            .update_secret(secret)
+            .await
+            .map_err(|err| match err {
+                DatabaseError::NotFound => SecretError::NotFound,
+                _ => SecretError::Database(err),
+            })
+    }
+
     pub async fn fetch_secret_names(
         &self,
         hashed_topic_name: &str,
@@ -169,6 +179,21 @@ impl SecretDto {
             .get(self.cursor)
             .ok_or(SecretError::SecretCorrupted)?;
         Self::decrypt_secret_value(current_value.to_string(), keyset)
+    }
+
+    pub fn update_secret_value(
+        &mut self,
+        value: String,
+        keyset: &StorageTopicAndSecretKeys,
+    ) -> Result<(), SecretError> {
+        let encrypted_value = Self::encrypt_secret_value(value, keyset)?;
+        self.versions.push(encrypted_value);
+        self.cursor = self.versions.len() - 1;
+
+        self.update_checksum(keyset)
+            .map_err(|err| SecretError::InvalidStorageKey(err.to_string()))?;
+
+        Ok(())
     }
 
     fn encrypt_secret_value(

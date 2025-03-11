@@ -28,6 +28,7 @@ impl Encryption {
     }
 }
 
+#[derive(Clone)]
 pub struct Headers {
     pub headers: HeaderMap,
 }

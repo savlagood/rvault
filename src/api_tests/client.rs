@@ -1,14 +1,14 @@
 use crate::api_tests::{
     consts::ENV_ROOT_TOKEN,
     endpoints::{
-        build_url, create_secret, create_topic, Endpoint, RequestMethod, ISSUE_ADMIN_TOKEN,
-        ISSUE_USER_TOKEN,
+        build_url, create_secret, create_topic, read_secret, Endpoint, RequestMethod,
+        ISSUE_ADMIN_TOKEN, ISSUE_USER_TOKEN,
     },
     models::{
         auth::{RootToken, TokenPair},
         common::{EncryptionMode, Headers},
         policies::Policies,
-        secrets::{SecretCreateRequest, SecretEncryptionKey},
+        secrets::{SecretCreateRequest, SecretEncryptionKey, SecretValue},
         topics::{TopicCreateRequest, TopicEncryptionKey},
     },
     utils::common::get_env_var,
@@ -84,6 +84,7 @@ impl<'a> RequestBuilder<'a> {
         let request = match self.endpoint.method {
             RequestMethod::Get => self.client.get(url),
             RequestMethod::Post => self.client.post(url),
+            RequestMethod::Put => self.client.put(url),
         };
 
         // headers
@@ -269,6 +270,24 @@ impl ClientWithServer {
             .await;
 
         assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    pub async fn fetch_secret(
+        &self,
+        topic_name: &str,
+        secret_name: &str,
+        headers: Headers,
+    ) -> SecretValue {
+        let request_body = serde_json::json!({});
+        let response = self
+            .make_admin_request_with_headers(
+                read_secret(topic_name, secret_name),
+                &request_body,
+                headers,
+            )
+            .await;
+
+        SecretValue::from_response(response).await
     }
 
     pub async fn create_secret(

@@ -75,6 +75,11 @@ pub mod http {
             pub value: String,
             pub version: usize,
         }
+
+        #[derive(Deserialize)]
+        pub struct SecretUpdateRequest {
+            pub value: String,
+        }
     }
 
     pub mod auth {

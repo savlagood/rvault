@@ -11,6 +11,7 @@ pub fn build_url(path: &str, port: u16) -> String {
 pub enum RequestMethod {
     Get,
     Post,
+    Put,
 }
 
 #[derive(Clone)]
@@ -85,5 +86,12 @@ pub fn read_secret(topic_name: &str, secret_name: &str) -> Endpoint {
     Endpoint {
         path: format!("api/topics/{}/secrets/{}", topic_name, secret_name),
         method: RequestMethod::Get,
+    }
+}
+
+pub fn update_secret(topic_name: &str, secret_name: &str) -> Endpoint {
+    Endpoint {
+        path: format!("api/topics/{}/secrets/{}", topic_name, secret_name),
+        method: RequestMethod::Put,
     }
 }

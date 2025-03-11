@@ -59,10 +59,27 @@ pub struct SecretValue {
 }
 
 impl SecretValue {
-    pub async fn from_response_to_string(response: Response) -> Self {
+    pub async fn from_response(response: Response) -> Self {
         response
             .json::<Self>()
             .await
             .expect("Error during parsing secret value from response")
+    }
+}
+
+#[derive(Serialize)]
+pub struct SecretUpdateRequest {
+    pub value: String,
+}
+
+impl SecretUpdateRequest {
+    pub fn new(value: &str) -> Self {
+        Self {
+            value: String::from(value),
+        }
+    }
+
+    pub fn into_value(self) -> serde_json::Value {
+        serde_json::json!(self)
     }
 }

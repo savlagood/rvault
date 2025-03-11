@@ -554,6 +554,82 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+    put:
+      summary: Update Secret Value
+      description: Updates the value of an existing secret in the specified topic.
+      tags:
+        - Secrets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: topic_name
+          in: path
+          required: true
+          description: Name of the topic containing the secret.
+          schema:
+            type: string
+        - name: secret_name
+          in: path
+          required: true
+          description: Name of the secret to update.
+          schema:
+            type: string
+        - name: x-rvault-topic-key
+          in: header
+          required: false
+          description: The encryption key for the topic (required for encrypted topics).
+          schema:
+            type: string
+        - name: x-rvault-secret-key
+          in: header
+          required: false
+          description: The encryption key for the secret (required for encrypted secrets).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - value
+              properties:
+                value:
+                  type: string
+                  description: The new value for the secret.
+      responses:
+        "200":
+          description: Secret value updated successfully.
+        "400":
+          description: Bad request - storage is not unsealed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - missing or invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - insufficient permissions or invalid encryption keys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found - topic or secret does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:

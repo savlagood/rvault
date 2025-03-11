@@ -183,7 +183,7 @@ pub mod secrets {
         response: Response,
         expected_value: &SecretValue,
     ) {
-        let value_from_response = SecretValue::from_response_to_string(response).await;
+        let value_from_response = SecretValue::from_response(response).await;
         assert_eq!(&value_from_response, expected_value);
     }
 }
