@@ -150,6 +150,15 @@ impl TopicDto {
         Ok(())
     }
 
+    pub fn contains_secret_name(&self, secret_name: &str) -> bool {
+        let hashed_secret_name = hash_string_base64(secret_name);
+        self.contains_hashed_secret_name(&hashed_secret_name)
+    }
+
+    pub fn contains_hashed_secret_name(&self, hashed_name: &String) -> bool {
+        self.secret_hashed_names.contains(hashed_name)
+    }
+
     pub fn add_hashed_secret_name(
         &mut self,
         name: String,

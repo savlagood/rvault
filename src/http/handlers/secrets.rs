@@ -1,11 +1,15 @@
 use crate::{
-    http::{errors::ResponseError, headers::TopicKeyHeader, jwt_tokens::AccessTokenClaims},
+    http::{
+        errors::ResponseError,
+        headers::{SecretKeyHeader, TopicKeyHeader},
+        jwt_tokens::AccessTokenClaims,
+    },
     models::{
-        http::secrets::{SecretEncryptionKey, SecretNames, SecretSettings},
+        http::secrets::{SecretEncryptionKey, SecretNames, SecretSettings, SecretValue},
         Encryption, StorageAndTopicKeys, StorageTopicAndSecretKeys,
     },
     policies::Permission,
-    secrets,
+    secrets::{self, SecretDao, SecretError},
     state::AppState,
     topics::{self, TopicDao},
     utils::{common::generate_external_key, hkdf, validators},
@@ -23,7 +27,10 @@ use tracing::info;
 pub fn create_router(app_state: AppState) -> Router {
     Router::new()
         .route("/", get(get_secret_names_handler))
-        .route("/:secret_name", post(create_secret_handler))
+        .route(
+            "/:secret_name",
+            post(create_secret_handler).get(read_secret_handler),
+        )
         .with_state(app_state)
 }
 
@@ -89,16 +96,16 @@ async fn create_secret_handler(
 ) -> Result<(StatusCode, Json<SecretEncryptionKey>), ResponseError> {
     // checks
     let policies = claims.policies;
+    policies.ensure_topic_access_permitted(&topic_name, Permission::Update)?;
     policies.ensure_secret_access_permitted(&topic_name, &secret_name, Permission::Create)?;
 
     validators::ensure_storage_is_unsealed(state.clone()).await?;
     validators::ensure_secret_name_valid(&secret_name)?;
 
     // actions
-    let config = state.get_config();
     let primary_topic_key = topic_key_header
         .value
-        .unwrap_or(config.default_topic_key.clone());
+        .unwrap_or(state.get_config().default_topic_key.clone());
 
     let secret_key = create_secret(
         topic_name,
@@ -182,4 +189,86 @@ async fn create_secret(
         _ => Some(external_key),
     };
     Ok(external_key)
+}
+
+async fn read_secret_handler(
+    claims: AccessTokenClaims,
+    TypedHeader(topic_key_header): TypedHeader<TopicKeyHeader>,
+    TypedHeader(secret_key_header): TypedHeader<SecretKeyHeader>,
+    Path((topic_name, secret_name)): Path<(String, String)>,
+    State(state): State<AppState>,
+) -> Result<Json<SecretValue>, ResponseError> {
+    // checks
+    let policies = claims.policies;
+    policies.ensure_topic_access_permitted(&topic_name, Permission::Read)?;
+    policies.ensure_secret_access_permitted(&topic_name, &secret_name, Permission::Read)?;
+
+    validators::ensure_storage_is_unsealed(state.clone()).await?;
+
+    // actions
+    let external_topic_key = topic_key_header
+        .value
+        .unwrap_or(state.get_config().default_topic_key.clone());
+    let external_secret_key = secret_key_header
+        .value
+        .unwrap_or(state.get_config().default_secret_key.clone());
+
+    let secret_value = read_secret_value(
+        topic_name,
+        secret_name,
+        external_topic_key,
+        external_secret_key,
+        state,
+    )
+    .await?;
+
+    Ok(Json(secret_value))
+}
+
+async fn read_secret_value(
+    topic_name: String,
+    secret_name: String,
+    external_topic_key: String,
+    external_secret_key: String,
+    state: AppState,
+) -> Result<SecretValue, ResponseError> {
+    let storage = state.get_storage_read().await;
+
+    // keys
+    let storage_key = storage.get_encryption_key()?;
+    let topic_key = hkdf::string_into_256_bit_key(external_topic_key)?;
+    let secret_key = hkdf::string_into_256_bit_key(external_secret_key)?;
+
+    // DAO objects
+    let db = state.get_db_conn();
+    let topic_dao = TopicDao::new(db.clone());
+    let secret_dao = SecretDao::new(db);
+
+    // getting topic
+    let topic_keyset = StorageAndTopicKeys {
+        storage_key,
+        topic_key: &topic_key,
+    };
+    let topic = topic_dao.find_by_name(&topic_name).await?;
+    topic.check_integrity(&topic_keyset)?;
+
+    if !topic.contains_secret_name(&secret_name) {
+        return Err(ResponseError::Secret(SecretError::NotFound));
+    }
+
+    // getting secret
+    let secret_keyset = StorageTopicAndSecretKeys {
+        storage_key,
+        topic_key: &topic_key,
+        secret_key: &secret_key,
+    };
+    let secret = secret_dao
+        .find_by_name(&topic.hashed_name, &secret_name)
+        .await?;
+    secret.check_integrity(&secret_keyset)?;
+
+    Ok(SecretValue {
+        value: secret.get_current_secret_value(&secret_keyset)?,
+        version: secret.cursor,
+    })
 }

@@ -51,3 +51,18 @@ impl SecretNames {
             .expect("Error during parsing secret names from response")
     }
 }
+
+#[derive(Deserialize, Debug, PartialEq)]
+pub struct SecretValue {
+    pub value: String,
+    pub version: usize,
+}
+
+impl SecretValue {
+    pub async fn from_response_to_string(response: Response) -> Self {
+        response
+            .json::<Self>()
+            .await
+            .expect("Error during parsing secret value from response")
+    }
+}

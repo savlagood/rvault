@@ -1,4 +1,4 @@
-use crate::api_tests::consts::TOPIC_KEY_HEADER;
+use crate::api_tests::consts::{SECRET_KEY_HEADER, TOPIC_KEY_HEADER};
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Serialize;
 
@@ -43,5 +43,11 @@ impl Headers {
         let value = HeaderValue::from_str(topic_key)
             .expect("Failed to convert into header value topic key");
         self.headers.insert(TOPIC_KEY_HEADER, value);
+    }
+
+    pub fn add_secret_key_header(&mut self, secret_key: &str) {
+        let value = HeaderValue::from_str(secret_key)
+            .expect("Failed to convert into header value topic key");
+        self.headers.insert(SECRET_KEY_HEADER, value);
     }
 }

@@ -175,6 +175,20 @@ impl ClientWithServer {
             .await
     }
 
+    pub async fn make_user_request_with_headers(
+        &self,
+        endpoint: Endpoint,
+        policies: Policies,
+        body: &Value,
+        headers: Headers,
+    ) -> Response {
+        let token_pair = self.fetch_user_token_pair(policies).await;
+        let user_access_token = token_pair.access_token;
+
+        self.make_authorized_request_with_headers(endpoint, body, &user_access_token, headers)
+            .await
+    }
+
     pub async fn make_authorized_request(
         &self,
         endpoint: Endpoint,
@@ -305,6 +319,29 @@ impl ClientWithServer {
         let request_body = SecretCreateRequest::new(EncryptionMode::None, value).into_value();
         let response = self
             .make_admin_request(create_secret(topic_name, secret_name), &request_body)
+            .await;
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    pub async fn create_secret_encryption_none_in_encrypted_topic(
+        &self,
+        topic_name: &str,
+        secret_name: &str,
+        value: String,
+        topic_key: &str,
+    ) {
+        let request_body = SecretCreateRequest::new(EncryptionMode::None, value).into_value();
+
+        let mut headers = Headers::new();
+        headers.add_topic_key_header(topic_key);
+
+        let response = self
+            .make_admin_request_with_headers(
+                create_secret(topic_name, secret_name),
+                &request_body,
+                headers,
+            )
             .await;
 
         assert_eq!(response.status(), StatusCode::CREATED);

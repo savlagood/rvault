@@ -80,3 +80,10 @@ pub fn secrets_list(topic_name: &str) -> Endpoint {
         method: RequestMethod::Get,
     }
 }
+
+pub fn read_secret(topic_name: &str, secret_name: &str) -> Endpoint {
+    Endpoint {
+        path: format!("api/topics/{}/secrets/{}", topic_name, secret_name),
+        method: RequestMethod::Get,
+    }
+}

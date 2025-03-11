@@ -69,6 +69,12 @@ pub mod http {
         pub struct SecretNames {
             pub names: HashSet<String>,
         }
+
+        #[derive(Serialize)]
+        pub struct SecretValue {
+            pub value: String,
+            pub version: usize,
+        }
     }
 
     pub mod auth {

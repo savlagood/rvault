@@ -22,7 +22,7 @@ pub const SECRET_KEY: &str = "Some secret password 42";
 
 // headers
 pub const TOPIC_KEY_HEADER: &str = "x-rvault-topic-key";
-// pub const SECRET_KEY_HEADER: &str = "x-rvault-secret-key";
+pub const SECRET_KEY_HEADER: &str = "x-rvault-secret-key";
 
 // policies
 pub static ADMIN_POLICIES: Lazy<Policies> = Lazy::new(|| {

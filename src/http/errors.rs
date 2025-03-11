@@ -159,6 +159,7 @@ impl IntoResponse for ResponseError {
                 SecretError::InvalidSecretKey(_err) => {
                     (StatusCode::FORBIDDEN, "Invalid secret key".to_string())
                 }
+                SecretError::InvalidKeys => (StatusCode::FORBIDDEN, err.to_string()),
                 SecretError::SecretCorrupted => {
                     error!("Secret data has been corrupted: {}", err.to_string());
                     (
@@ -167,6 +168,7 @@ impl IntoResponse for ResponseError {
                     )
                 }
                 SecretError::AlreadyExists => (StatusCode::CONFLICT, err.to_string()),
+                SecretError::NotFound => (StatusCode::NOT_FOUND, err.to_string()),
                 SecretError::Database(err) => {
                     error!("Error during database operation: {err:?}");
                     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())

@@ -23,8 +23,14 @@ pub enum SecretError {
     #[error("Invalid secret encryption key. AesError: {0}")]
     InvalidSecretKey(String),
 
+    #[error("Invalid topic or secret encryption key")]
+    InvalidKeys,
+
     #[error("Secret with such name already exists")]
     AlreadyExists,
+
+    #[error("Secret with such name does not exist")]
+    NotFound,
 
     #[error("Secret's data has been corrupted")]
     SecretCorrupted,
@@ -85,6 +91,31 @@ impl SecretDao {
 
         Ok(secret_names)
     }
+
+    pub async fn find_by_name(
+        &self,
+        hashed_topic_name: &str,
+        name: &str,
+    ) -> Result<SecretDto, SecretError> {
+        let hashed_name = hash_string_base64(name);
+        self.find_by_hashed_name(hashed_topic_name, &hashed_name)
+            .await
+    }
+
+    pub async fn find_by_hashed_name(
+        &self,
+        hashed_topic_name: &str,
+        hashed_name: &str,
+    ) -> Result<SecretDto, SecretError> {
+        self.db
+            .read_secret(hashed_topic_name, hashed_name)
+            .await
+            .map_err(|err| match err {
+                DatabaseError::Duplicate => SecretError::SecretCorrupted,
+                _ => SecretError::Database(err),
+            })?
+            .ok_or(SecretError::NotFound)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -129,17 +160,69 @@ impl SecretDto {
         Ok(secret_dto)
     }
 
+    pub fn get_current_secret_value(
+        &self,
+        keyset: &StorageTopicAndSecretKeys,
+    ) -> Result<String, SecretError> {
+        let current_value = self
+            .versions
+            .get(self.cursor)
+            .ok_or(SecretError::SecretCorrupted)?;
+        Self::decrypt_secret_value(current_value.to_string(), keyset)
+    }
+
     fn encrypt_secret_value(
         value: String,
         keyset: &StorageTopicAndSecretKeys,
     ) -> Result<String, SecretError> {
-        let encrypted_with_topic_key = encrypt_string_base64(&value, keyset.topic_key)
-            .map_err(|err| SecretError::InvalidTopicKey(err.to_string()))?;
-        let encrypted_with_secret_key =
-            encrypt_string_base64(&encrypted_with_topic_key, keyset.secret_key)
-                .map_err(|err| SecretError::InvalidSecretKey(err.to_string()))?;
+        let value_bytes = value.as_bytes();
 
-        Ok(encrypted_with_secret_key)
+        let topic_cipher = Aes256Cipher::new(keyset.topic_key)
+            .map_err(|err| SecretError::InvalidTopicKey(err.to_string()))?;
+        let value = topic_cipher
+            .encrypt(value_bytes)
+            .map_err(|err| SecretError::InvalidTopicKey(err.to_string()))?;
+
+        let secret_cipher = Aes256Cipher::new(keyset.secret_key)
+            .map_err(|err| SecretError::InvalidSecretKey(err.to_string()))?;
+        let encrypted_value = secret_cipher
+            .encrypt(&value)
+            .map_err(|err| SecretError::InvalidSecretKey(err.to_string()))?;
+
+        Ok(base64::encode(&encrypted_value))
+    }
+
+    fn decrypt_secret_value(
+        value: String,
+        keyset: &StorageTopicAndSecretKeys,
+    ) -> Result<String, SecretError> {
+        let value_bytes = base64::decode(value).map_err(|_| SecretError::SecretCorrupted)?;
+
+        let secret_cipher = Aes256Cipher::new(keyset.secret_key)
+            .map_err(|err| SecretError::InvalidSecretKey(err.to_string()))?;
+        let value = secret_cipher
+            .decrypt(&value_bytes)
+            .map_err(|err| SecretError::InvalidSecretKey(err.to_string()))?;
+
+        let topic_cipher = Aes256Cipher::new(keyset.topic_key)
+            .map_err(|err| SecretError::InvalidTopicKey(err.to_string()))?;
+        let decrypted_value = topic_cipher
+            .decrypt(&value)
+            .map_err(|err| SecretError::InvalidTopicKey(err.to_string()))?;
+
+        String::from_utf8(decrypted_value).map_err(|_| SecretError::SecretCorrupted)
+    }
+
+    pub fn check_integrity(&self, keyset: &StorageTopicAndSecretKeys) -> Result<(), SecretError> {
+        let current_checksum = self
+            .calculate_checksum(keyset)
+            .map_err(|_| SecretError::InvalidKeys)?;
+
+        if self.checksum != current_checksum {
+            return Err(SecretError::InvalidKeys);
+        }
+
+        Ok(())
     }
 
     fn update_checksum(&mut self, keyset: &StorageTopicAndSecretKeys) -> Result<(), AesError> {

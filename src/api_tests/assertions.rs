@@ -160,7 +160,10 @@ pub mod topics {
 }
 
 pub mod secrets {
-    use crate::api_tests::{consts::SECRET_KEY_LENGTH, models::secrets::SecretEncryptionKey};
+    use crate::api_tests::{
+        consts::SECRET_KEY_LENGTH,
+        models::secrets::{SecretEncryptionKey, SecretValue},
+    };
     use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
     use reqwest::Response;
 
@@ -174,5 +177,13 @@ pub mod secrets {
             .expect("Failed to decode topic key from response");
 
         assert_eq!(decoded_key.len(), SECRET_KEY_LENGTH);
+    }
+
+    pub async fn assert_response_contains_secret_value(
+        response: Response,
+        expected_value: &SecretValue,
+    ) {
+        let value_from_response = SecretValue::from_response_to_string(response).await;
+        assert_eq!(&value_from_response, expected_value);
     }
 }

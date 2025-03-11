@@ -78,10 +78,6 @@ impl Policies {
     ) -> Result<(), PoliciesError> {
         let topic = self.get_topic_or_default(topic_name);
 
-        if !topic.permissions.contains(&Permission::Update) {
-            return Err(PoliciesError::TopicAccessDenied);
-        }
-
         topic.ensure_secret_access_permitted(secret_name, required_permission)
     }
 }
