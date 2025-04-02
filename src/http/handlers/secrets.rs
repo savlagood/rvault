@@ -7,6 +7,7 @@ use crate::{
     models::{
         http::secrets::{
             SecretEncryptionKey, SecretNames, SecretSettings, SecretUpdateRequest, SecretValue,
+            SecretVersions,
         },
         StorageAndTopicKeys, StorageTopicAndSecretKeys,
     },
@@ -26,6 +27,7 @@ use axum_extra::TypedHeader;
 
 enum SecretOperation {
     Names,
+    Versions,
     Create,
     Read,
     Update,
@@ -36,6 +38,7 @@ impl SecretOperation {
     fn get_required_permissions(self) -> (Permission, Option<Permission>) {
         match self {
             Self::Names => (Permission::Read, None),
+            Self::Versions => (Permission::Read, Some(Permission::Read)),
             Self::Create => (Permission::Update, Some(Permission::Create)),
             Self::Read => (Permission::Read, Some(Permission::Read)),
             Self::Update => (Permission::Read, Some(Permission::Update)),
@@ -112,6 +115,7 @@ pub fn create_router(app_state: AppState) -> Router {
                 .put(update_secret_handler)
                 .delete(delete_secret_handler),
         )
+        .route("/:secret_name/versions", get(get_secret_version_handler))
         .with_state(app_state)
 }
 
@@ -204,11 +208,6 @@ async fn create_secret_handler(
 
     context.secret_dao.create(secret).await?;
     context.topic_dao.update(topic).await?;
-
-    // let response_key = match secret_settings.encryption {
-    //     Encryption::None => None,
-    //     _ => external_secret_key,
-    // };
 
     Ok((
         StatusCode::CREATED,
@@ -336,4 +335,56 @@ async fn delete_secret_handler(
     context.topic_dao.update(topic).await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_secret_version_handler(
+    claims: AccessTokenClaims,
+    TypedHeader(topic_key_header): TypedHeader<TopicKeyHeader>,
+    TypedHeader(secret_key_header): TypedHeader<SecretKeyHeader>,
+    Path((topic_name, secret_name)): Path<(String, String)>,
+    State(state): State<AppState>,
+) -> Result<Json<SecretVersions>, ResponseError> {
+    validate_request(
+        &claims,
+        &state,
+        &topic_name,
+        Some(&secret_name),
+        SecretOperation::Versions,
+    )
+    .await?;
+
+    let context =
+        SecretContext::new(&state, topic_key_header.value, secret_key_header.value).await?;
+
+    let topic = context.topic_dao.find_by_name(&topic_name).await?;
+    topic.check_integrity(&context.topic_keyset())?;
+
+    if !topic.contains_secret_name(&secret_name) {
+        return Err(ResponseError::Secret(SecretError::NotFound));
+    }
+
+    let secret = context
+        .secret_dao
+        .find_by_name(&topic.hashed_name, &secret_name)
+        .await?;
+    secret.check_integrity(&context.secret_keyset())?;
+
+    let keyset = context.secret_keyset();
+
+    let versions = secret
+        .versions
+        .into_iter()
+        .enumerate()
+        .map(|(i, value)| {
+            SecretDto::decrypt_secret_value(value, &keyset).map(|decrypted_value| SecretValue {
+                value: decrypted_value,
+                version: i,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(Json(SecretVersions {
+        current: secret.cursor,
+        versions,
+    }))
 }

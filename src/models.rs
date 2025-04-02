@@ -80,6 +80,12 @@ pub mod http {
         pub struct SecretUpdateRequest {
             pub value: String,
         }
+
+        #[derive(Serialize)]
+        pub struct SecretVersions {
+            pub current: usize,
+            pub versions: Vec<SecretValue>,
+        }
     }
 
     pub mod auth {

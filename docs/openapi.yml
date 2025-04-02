@@ -694,6 +694,75 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /topics/{topic_name}/secrets/{secret_name}/versions:
+    get:
+      summary: Get Secret Versions
+      description: Retrieves all versions of a specific secret from the specified topic.
+      tags:
+        - Secrets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: topic_name
+          in: path
+          required: true
+          description: Name of the topic containing the secret.
+          schema:
+            type: string
+        - name: secret_name
+          in: path
+          required: true
+          description: Name of the secret to retrieve versions for.
+          schema:
+            type: string
+        - name: x-rvault-topic-key
+          in: header
+          required: false
+          description: The encryption key for the topic (required for encrypted topics).
+          schema:
+            type: string
+        - name: x-rvault-secret-key
+          in: header
+          required: false
+          description: The encryption key for the secret (required for encrypted secrets).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Secret versions retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SecretVersions"
+        "400":
+          description: Bad request - storage is not unsealed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - missing or invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - insufficient permissions or invalid encryption keys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found - topic or secret does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -828,3 +897,22 @@ components:
         secret_key:
           type: string
           description: The encryption key for the secret. Only returned for 'generate' and 'provided' modes.
+
+    SecretVersions:
+      type: object
+      properties:
+        current:
+          type: integer
+          description: The index of the current active version.
+        versions:
+          type: array
+          description: List of all secret versions.
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+                description: The decrypted secret value.
+              version:
+                type: integer
+                description: The version number of the secret.

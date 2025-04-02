@@ -67,6 +67,22 @@ impl SecretValue {
     }
 }
 
+#[derive(Deserialize)]
+pub struct SecretVersions {
+    #[serde(rename = "current")]
+    pub _current: usize,
+    pub versions: Vec<SecretValue>,
+}
+
+impl SecretVersions {
+    pub async fn from_response(response: Response) -> Self {
+        response
+            .json::<Self>()
+            .await
+            .expect("Error during parsing secret value from response")
+    }
+}
+
 #[derive(Serialize)]
 pub struct SecretUpdateRequest {
     pub value: String,

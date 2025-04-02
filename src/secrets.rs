@@ -231,7 +231,7 @@ impl SecretDto {
         Ok(base64::encode(&encrypted_value))
     }
 
-    fn decrypt_secret_value(
+    pub fn decrypt_secret_value(
         value: String,
         keyset: &StorageTopicAndSecretKeys,
     ) -> Result<String, SecretError> {

@@ -103,3 +103,10 @@ pub fn delete_secret(topic_name: &str, secret_name: &str) -> Endpoint {
         method: RequestMethod::Delete,
     }
 }
+
+pub fn secret_versions(topic_name: &str, secret_name: &str) -> Endpoint {
+    Endpoint {
+        path: format!("api/topics/{}/secrets/{}/versions", topic_name, secret_name),
+        method: RequestMethod::Get,
+    }
+}
