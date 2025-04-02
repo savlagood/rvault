@@ -71,13 +71,13 @@ pub fn get_admin_policies() -> Policies {
     policies
 }
 
-pub fn generate_external_key(encryption_type: Encryption, default_key: &str) -> String {
+pub fn generate_external_key(encryption_type: Encryption) -> Option<String> {
     match encryption_type {
-        Encryption::Provided(key) => key,
+        Encryption::Provided(key) => Some(key),
         Encryption::Generate => {
             let key_bytes = generate_256_bit_key();
-            base64::encode(&key_bytes)
+            Some(base64::encode(&key_bytes))
         }
-        Encryption::None => default_key.to_string(),
+        Encryption::None => None,
     }
 }

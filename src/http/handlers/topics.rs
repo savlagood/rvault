@@ -2,11 +2,11 @@ use crate::{
     http::{errors::ResponseError, jwt_tokens::AccessTokenClaims},
     models::{
         http::topics::{TopicEncryptionKey, TopicNames, TopicSettings},
-        Encryption, StorageAndTopicKeys,
+        StorageAndTopicKeys,
     },
     policies::Permission,
     state::AppState,
-    topics,
+    topics::{self, TopicDao, TopicDto},
     utils::{common::generate_external_key, hkdf, validators},
 };
 use axum::{
@@ -15,14 +15,80 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use std::collections::HashSet;
-use tracing::info;
+
+enum TopicOperation {
+    Create,
+}
+
+impl TopicOperation {
+    fn get_required_permissions(self) -> Permission {
+        match self {
+            TopicOperation::Create => Permission::Create,
+        }
+    }
+}
+
+struct TopicContext {
+    storage_key: Vec<u8>,
+    topic_key: Vec<u8>,
+    topic_dao: TopicDao,
+}
+
+impl TopicContext {
+    async fn new(
+        state: &AppState,
+        external_topic_key: Option<String>,
+    ) -> Result<Self, ResponseError> {
+        let storage = state.get_storage_read().await;
+        let config = state.get_config();
+
+        let storage_key = storage.get_encryption_key()?.to_vec();
+        let topic_key = if let Some(key) = external_topic_key {
+            hkdf::string_into_256_bit_key(key)?
+        } else {
+            hkdf::string_into_256_bit_key(config.default_topic_key.clone())?
+        };
+
+        let db = state.get_db_conn();
+        let topic_dao = TopicDao::new(db);
+
+        Ok(Self {
+            storage_key,
+            topic_key,
+            topic_dao,
+        })
+    }
+
+    fn topic_keyset(&self) -> StorageAndTopicKeys {
+        StorageAndTopicKeys {
+            storage_key: &self.storage_key,
+            topic_key: &self.topic_key,
+        }
+    }
+}
 
 pub fn create_router(app_state: AppState) -> Router {
     Router::new()
         .route("/", get(get_topic_names_handler))
         .route("/:topic_name", post(create_topic_handler))
         .with_state(app_state)
+}
+
+async fn validate_request(
+    claims: &AccessTokenClaims,
+    state: &AppState,
+    topic_name: &str,
+    operation: TopicOperation,
+) -> Result<(), ResponseError> {
+    validators::ensure_storage_is_unsealed(state.clone()).await?;
+
+    let required_permission = operation.get_required_permissions();
+    let policies = &claims.policies;
+
+    policies.ensure_topic_access_permitted(topic_name, required_permission)?;
+    validators::ensure_topic_name_valid(topic_name)?;
+
+    Ok(())
 }
 
 async fn get_topic_names_handler(
@@ -34,21 +100,15 @@ async fn get_topic_names_handler(
     validators::ensure_storage_is_unsealed(state.clone()).await?;
 
     // actions
-    let topic_names = get_topic_names(state).await?;
-
-    let response_body = TopicNames { names: topic_names };
-    Ok(Json(response_body))
-}
-
-async fn get_topic_names(state: AppState) -> Result<HashSet<String>, ResponseError> {
     let storage = state.get_storage_read().await;
     let storage_key = storage.get_encryption_key()?;
 
     let db = state.get_db_conn();
-    let topic_dao = topics::TopicDao::new(db);
-    let topic_names = topic_dao.fetch_topic_names(storage_key).await?;
+    let topic_names = topics::TopicDao::new(db)
+        .fetch_topic_names(storage_key)
+        .await?;
 
-    Ok(topic_names)
+    Ok(Json(TopicNames { names: topic_names }))
 }
 
 async fn create_topic_handler(
@@ -57,67 +117,19 @@ async fn create_topic_handler(
     State(state): State<AppState>,
     Json(topic_settings): Json<TopicSettings>,
 ) -> Result<(StatusCode, Json<TopicEncryptionKey>), ResponseError> {
-    // checks
-    let policies = claims.policies;
-    policies.ensure_topic_access_permitted(topic_name.as_str(), Permission::Create)?;
+    validate_request(&claims, &state, &topic_name, TopicOperation::Create).await?;
 
-    validators::ensure_storage_is_unsealed(state.clone()).await?;
-    validators::ensure_topic_name_valid(topic_name.as_str())?;
+    let external_topic_key = generate_external_key(topic_settings.encryption);
 
-    // actions
-    let topic_key = generate_key_and_create_topic(topic_name, topic_settings, state).await?;
+    let context = TopicContext::new(&state, external_topic_key.clone()).await?;
 
-    let response_body = TopicEncryptionKey { value: topic_key };
-    Ok((StatusCode::CREATED, Json(response_body)))
-}
+    let topic = TopicDto::new(topic_name, &context.topic_keyset())?;
+    context.topic_dao.create(topic).await?;
 
-async fn generate_key_and_create_topic(
-    name: String,
-    settings: TopicSettings,
-    state: AppState,
-) -> Result<Option<String>, ResponseError> {
-    // topic key
-    let (external_key, topic_key) = get_external_and_internal_topic_keys(
-        settings.encryption.clone(),
-        &state.get_config().default_topic_key,
-    )?;
-
-    // storage key
-    let storage = state.get_storage_read().await;
-    let storage_key = storage.get_encryption_key()?;
-
-    // keyset
-    let keyset = StorageAndTopicKeys {
-        storage_key,
-        topic_key: &topic_key,
-    };
-
-    // create DAO
-    let db = state.get_db_conn();
-    let topic_dao = topics::TopicDao::new(db);
-
-    // create topic structure
-    let topic = topics::TopicDto::new(name, &keyset)?;
-    let hashed_name = topic.hashed_name.clone();
-
-    // save topic to database
-    topic_dao.create(topic).await?;
-
-    info!("Topic {hashed_name:?} successfully created");
-
-    let external_key = match settings.encryption {
-        Encryption::None => None,
-        _ => Some(external_key),
-    };
-    Ok(external_key)
-}
-
-fn get_external_and_internal_topic_keys(
-    encryption_type: Encryption,
-    default_key: &str,
-) -> Result<(String, Vec<u8>), ResponseError> {
-    let external_key = generate_external_key(encryption_type, default_key);
-    let internal_key = hkdf::string_into_256_bit_key(external_key.clone())?;
-
-    Ok((external_key, internal_key))
+    Ok((
+        StatusCode::CREATED,
+        Json(TopicEncryptionKey {
+            value: external_topic_key,
+        }),
+    ))
 }
