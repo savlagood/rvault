@@ -6,8 +6,8 @@ use crate::{
     },
     models::{
         http::secrets::{
-            SecretEncryptionKey, SecretNames, SecretSettings, SecretUpdateRequest, SecretValue,
-            SecretVersions,
+            SecretCurrentVersion, SecretEncryptionKey, SecretNames, SecretSettings,
+            SecretUpdateRequest, SecretValue, SecretVersions,
         },
         StorageAndTopicKeys, StorageTopicAndSecretKeys,
     },
@@ -20,7 +20,7 @@ use crate::{
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use axum_extra::TypedHeader;
@@ -28,6 +28,7 @@ use axum_extra::TypedHeader;
 enum SecretOperation {
     Names,
     Versions,
+    UpdateVersion,
     Create,
     Read,
     Update,
@@ -39,6 +40,7 @@ impl SecretOperation {
         match self {
             Self::Names => (Permission::Read, None),
             Self::Versions => (Permission::Read, Some(Permission::Read)),
+            Self::UpdateVersion => (Permission::Read, Some(Permission::Update)),
             Self::Create => (Permission::Update, Some(Permission::Create)),
             Self::Read => (Permission::Read, Some(Permission::Read)),
             Self::Update => (Permission::Read, Some(Permission::Update)),
@@ -115,7 +117,11 @@ pub fn create_router(app_state: AppState) -> Router {
                 .put(update_secret_handler)
                 .delete(delete_secret_handler),
         )
-        .route("/:secret_name/versions", get(get_secret_version_handler))
+        .route("/:secret_name/versions", get(get_secret_versions_handler))
+        .route(
+            "/:secret_name/versions/current",
+            put(update_current_version_handler),
+        )
         .with_state(app_state)
 }
 
@@ -337,7 +343,7 @@ async fn delete_secret_handler(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn get_secret_version_handler(
+async fn get_secret_versions_handler(
     claims: AccessTokenClaims,
     TypedHeader(topic_key_header): TypedHeader<TopicKeyHeader>,
     TypedHeader(secret_key_header): TypedHeader<SecretKeyHeader>,
@@ -387,4 +393,43 @@ async fn get_secret_version_handler(
         current: secret.cursor,
         versions,
     }))
+}
+
+async fn update_current_version_handler(
+    claims: AccessTokenClaims,
+    TypedHeader(topic_key_header): TypedHeader<TopicKeyHeader>,
+    TypedHeader(secret_key_header): TypedHeader<SecretKeyHeader>,
+    Path((topic_name, secret_name)): Path<(String, String)>,
+    State(state): State<AppState>,
+    Json(current_version): Json<SecretCurrentVersion>,
+) -> Result<StatusCode, ResponseError> {
+    validate_request(
+        &claims,
+        &state,
+        &topic_name,
+        Some(&secret_name),
+        SecretOperation::UpdateVersion,
+    )
+    .await?;
+
+    let context =
+        SecretContext::new(&state, topic_key_header.value, secret_key_header.value).await?;
+
+    let topic = context.topic_dao.find_by_name(&topic_name).await?;
+    topic.check_integrity(&context.topic_keyset())?;
+
+    if !topic.contains_secret_name(&secret_name) {
+        return Err(ResponseError::Secret(SecretError::NotFound));
+    }
+
+    let mut secret = context
+        .secret_dao
+        .find_by_name(&topic.hashed_name, &secret_name)
+        .await?;
+    secret.check_integrity(&context.secret_keyset())?;
+
+    secret.update_current_version(current_version.version, &context.secret_keyset())?;
+    context.secret_dao.update(&secret).await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }

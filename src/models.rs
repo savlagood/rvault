@@ -86,6 +86,11 @@ pub mod http {
             pub current: usize,
             pub versions: Vec<SecretValue>,
         }
+
+        #[derive(Deserialize)]
+        pub struct SecretCurrentVersion {
+            pub version: usize,
+        }
     }
 
     pub mod auth {

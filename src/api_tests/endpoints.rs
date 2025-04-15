@@ -110,3 +110,13 @@ pub fn secret_versions(topic_name: &str, secret_name: &str) -> Endpoint {
         method: RequestMethod::Get,
     }
 }
+
+pub fn update_secret_version(topic_name: &str, secret_name: &str) -> Endpoint {
+    Endpoint {
+        path: format!(
+            "api/topics/{}/secrets/{}/versions/current",
+            topic_name, secret_name
+        ),
+        method: RequestMethod::Put,
+    }
+}

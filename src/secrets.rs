@@ -26,6 +26,9 @@ pub enum SecretError {
     #[error("Invalid topic or secret encryption key")]
     InvalidKeys,
 
+    #[error("Invalid version number")]
+    InvalidVersion,
+
     #[error("Secret with such name already exists")]
     AlreadyExists,
 
@@ -203,6 +206,23 @@ impl SecretDto {
         let encrypted_value = Self::encrypt_secret_value(value, keyset)?;
         self.versions.push(encrypted_value);
         self.cursor = self.versions.len() - 1;
+
+        self.update_checksum(keyset)
+            .map_err(|err| SecretError::InvalidStorageKey(err.to_string()))?;
+
+        Ok(())
+    }
+
+    pub fn update_current_version(
+        &mut self,
+        version: usize,
+        keyset: &StorageTopicAndSecretKeys,
+    ) -> Result<(), SecretError> {
+        if version >= self.versions.len() {
+            return Err(SecretError::InvalidVersion);
+        }
+
+        self.cursor = version;
 
         self.update_checksum(keyset)
             .map_err(|err| SecretError::InvalidStorageKey(err.to_string()))?;

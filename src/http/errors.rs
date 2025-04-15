@@ -160,6 +160,7 @@ impl IntoResponse for ResponseError {
                     (StatusCode::FORBIDDEN, "Invalid secret key".to_string())
                 }
                 SecretError::InvalidKeys => (StatusCode::FORBIDDEN, err.to_string()),
+                SecretError::InvalidVersion => (StatusCode::BAD_REQUEST, err.to_string()),
                 SecretError::SecretCorrupted => {
                     error!("Secret data has been corrupted: {}", err.to_string());
                     (
