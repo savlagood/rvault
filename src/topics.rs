@@ -73,6 +73,16 @@ impl TopicDao {
         })
     }
 
+    pub async fn delete(&self, hashed_name: &str) -> Result<(), TopicError> {
+        self.db
+            .delete_topic(hashed_name)
+            .await
+            .map_err(|err| match err {
+                DatabaseError::NotFound => TopicError::NotFound,
+                _ => TopicError::Database(err),
+            })
+    }
+
     pub async fn fetch_topic_names(
         &self,
         storage_key: &[u8],

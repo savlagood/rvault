@@ -148,6 +148,7 @@ paths:
 
   /storage/init:
     post:
+      summary: Initialize Storage
       description: Initialize Storage
       tags:
         - Storage
@@ -192,6 +193,7 @@ paths:
 
   /storage/unseal:
     post:
+      summary: Unseal Storage
       description: Unseal Storage
       tags:
         - Storage
@@ -225,6 +227,7 @@ paths:
 
   /storage/seal:
     post:
+      summary: Seal Storage
       description: Seal Storage
       tags:
         - Storage
@@ -338,6 +341,58 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: Conflict - topic already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      summary: Delete Topic
+      description: Deletes a topic and all its secrets.
+      tags:
+        - Topics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: topic_name
+          in: path
+          required: true
+          description: Name of the topic to delete.
+          schema:
+            type: string
+        - name: x-rvault-topic-key
+          in: header
+          required: false
+          description: The encryption key for the topic (required for encrypted topics).
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Topic and all its secrets deleted successfully.
+        "400":
+          description: Bad request - storage is not unsealed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - missing or invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - insufficient permissions or invalid topic key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found - topic does not exist.
           content:
             application/json:
               schema:

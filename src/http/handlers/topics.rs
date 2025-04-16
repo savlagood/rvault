@@ -1,10 +1,11 @@
 use crate::{
-    http::{errors::ResponseError, jwt_tokens::AccessTokenClaims},
+    http::{errors::ResponseError, headers::TopicKeyHeader, jwt_tokens::AccessTokenClaims},
     models::{
         http::topics::{TopicEncryptionKey, TopicNames, TopicSettings},
         StorageAndTopicKeys,
     },
     policies::Permission,
+    secrets::SecretDao,
     state::AppState,
     topics::{self, TopicDao, TopicDto},
     utils::{common::generate_external_key, hkdf, validators},
@@ -15,15 +16,18 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use axum_extra::TypedHeader;
 
 enum TopicOperation {
     Create,
+    Delete,
 }
 
 impl TopicOperation {
     fn get_required_permissions(self) -> Permission {
         match self {
             TopicOperation::Create => Permission::Create,
+            TopicOperation::Delete => Permission::Delete,
         }
     }
 }
@@ -70,7 +74,10 @@ impl TopicContext {
 pub fn create_router(app_state: AppState) -> Router {
     Router::new()
         .route("/", get(get_topic_names_handler))
-        .route("/:topic_name", post(create_topic_handler))
+        .route(
+            "/:topic_name",
+            post(create_topic_handler).delete(delete_topic_handler),
+        )
         .with_state(app_state)
 }
 
@@ -132,4 +139,31 @@ async fn create_topic_handler(
             value: external_topic_key,
         }),
     ))
+}
+
+async fn delete_topic_handler(
+    claims: AccessTokenClaims,
+    TypedHeader(topic_key_header): TypedHeader<TopicKeyHeader>,
+    Path(topic_name): Path<String>,
+    State(state): State<AppState>,
+) -> Result<StatusCode, ResponseError> {
+    validate_request(&claims, &state, &topic_name, TopicOperation::Delete).await?;
+
+    let context = TopicContext::new(&state, topic_key_header.value).await?;
+
+    let topic = context.topic_dao.find_by_name(&topic_name).await?;
+    topic.check_integrity(&context.topic_keyset())?;
+
+    let db = state.get_db_conn();
+    let secret_dao = SecretDao::new(db);
+
+    for secret_hashed_name in &topic.secret_hashed_names {
+        secret_dao
+            .delete(&topic.hashed_name, &secret_hashed_name)
+            .await?;
+    }
+
+    context.topic_dao.delete(&topic.hashed_name).await?;
+
+    Ok(StatusCode::NO_CONTENT)
 }

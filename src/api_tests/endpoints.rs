@@ -61,6 +61,13 @@ pub fn create_topic(topic_name: &str) -> Endpoint {
     }
 }
 
+pub fn delete_topic(topic_name: &str) -> Endpoint {
+    Endpoint {
+        path: format!("api/topics/{}", topic_name),
+        method: RequestMethod::Delete,
+    }
+}
+
 lazy_static! {
     pub static ref TOPICS_LIST: Endpoint = Endpoint {
         path: String::from("api/topics"),
