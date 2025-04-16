@@ -1,11 +1,31 @@
 version: "3.8"
 
 services:
+  rvault:
+    container_name: storage-rvault
+    build: .
+    ports:
+      - 9200:9200
+    environment:
+      - RVAULT_ROOT_TOKEN=${RVAULT_ROOT_TOKEN}
+      - RVAULT_AUTH_SECRET=${RVAULT_AUTH_SECRET}
+      - RVAULT_DEFAULT_TOPIC_KEY=${RVAULT_DEFAULT_TOPIC_KEY}
+      - RVAULT_DEFAULT_SECRET_KEY=${RVAULT_DEFAULT_SECRET_KEY}
+      - RVAULT_DB_TYPE=mongodb
+      - RVAULT_MONGO_DB_NAME=rvault
+      - RVAULT_MONGO_CONNECTION_STRING=mongodb://mongodb:27017
+    volumes:
+      - ./rvault_data:/opt/rvault/data
+    depends_on:
+      - mongodb
+    networks:
+      - mongo_net
+
   mongodb:
     container_name: mongodb-rvault
     image: mongodb/mongodb-community-server:latest
     ports:
-      - '27017:27017'
+      - "27017:27017"
     networks:
       - mongo_net
     restart: always

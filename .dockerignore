@@ -1,0 +1,12 @@
+target/
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+README.md
+docs/
+*.md
+.env
+.env.test
+rvault_data/
+.vscode/
