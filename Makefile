@@ -14,8 +14,14 @@ clippy:
 build-debug: format
 	cargo build
 
+build-release: format
+	cargo build --release
+
 run-debug: docker-up format
 	cargo run
+
+run-release: docker-up format
+	cargo run --release
 
 test-verbose: docker-up format
 	cargo test -- --test-threads=$(TEST_THREADS) --nocapture --color=always

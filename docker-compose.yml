@@ -13,11 +13,13 @@ services:
       - RVAULT_DEFAULT_SECRET_KEY=${RVAULT_DEFAULT_SECRET_KEY}
       - RVAULT_DB_TYPE=mongodb
       - RVAULT_MONGO_DB_NAME=rvault
-      - RVAULT_MONGO_CONNECTION_STRING=mongodb://mongodb:27017
+      - RVAULT_MONGO_URI=mongodb://mongodb:27017
+      - RVAULT_REDIS_URI=redis://redis:6379
     volumes:
       - ./rvault_data:/opt/rvault/data
     depends_on:
       - mongodb
+      - redis
     networks:
       - mongo_net
 
@@ -26,6 +28,19 @@ services:
     image: mongodb/mongodb-community-server:latest
     ports:
       - "27017:27017"
+    networks:
+      - mongo_net
+    restart: always
+
+  redis:
+    container_name: redis-rvault
+    image: redis:latest
+    environment:
+      - REDIS_PASSWORD=simple_redis_password
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./rvault_data/redis:/data
     networks:
       - mongo_net
     restart: always

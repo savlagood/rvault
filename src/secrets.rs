@@ -1,4 +1,5 @@
 use crate::{
+    cache::RedisCache,
     database::{DatabaseError, DbConn},
     models::StorageTopicAndSecretKeys,
     utils::aes::{Aes256Cipher, AesError},
@@ -56,21 +57,25 @@ fn decrypt_value(cipher: &Aes256Cipher, encrypted_value: String) -> Result<Strin
 }
 pub struct SecretDao {
     db: Arc<DbConn>,
+    cache: Arc<RedisCache>,
 }
 
 impl SecretDao {
-    pub fn new(db: Arc<DbConn>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<DbConn>, cache: Arc<RedisCache>) -> Self {
+        Self { db, cache }
     }
 
     pub async fn create(&self, secret: SecretDto) -> Result<(), SecretError> {
         self.db
-            .create_secret(secret)
+            .create_secret(secret.clone())
             .await
             .map_err(|err| match err {
                 DatabaseError::AlreadyExists => SecretError::AlreadyExists,
                 _ => SecretError::Database(err),
-            })
+            })?;
+
+        let cache_key = Self::get_cache_key(&secret.hashed_topic_name, &secret.hashed_name);
+        self.set_in_cache(&cache_key, &secret).await
     }
 
     pub async fn update(&self, secret: &SecretDto) -> Result<(), SecretError> {
@@ -80,7 +85,10 @@ impl SecretDao {
             .map_err(|err| match err {
                 DatabaseError::NotFound => SecretError::NotFound,
                 _ => SecretError::Database(err),
-            })
+            })?;
+
+        let cache_key = Self::get_cache_key(&secret.hashed_topic_name, &secret.hashed_name);
+        self.set_in_cache(&cache_key, secret).await
     }
 
     pub async fn delete(
@@ -94,7 +102,10 @@ impl SecretDao {
             .map_err(|err| match err {
                 DatabaseError::NotFound => SecretError::NotFound,
                 _ => SecretError::Database(err),
-            })
+            })?;
+
+        let cache_key = Self::get_cache_key(hashed_topic_name, hashed_name);
+        self.delete_from_cache(&cache_key).await
     }
 
     pub async fn fetch_secret_names(
@@ -134,18 +145,49 @@ impl SecretDao {
         hashed_topic_name: &str,
         hashed_name: &str,
     ) -> Result<SecretDto, SecretError> {
-        self.db
+        let cache_key = Self::get_cache_key(hashed_topic_name, hashed_name);
+
+        if let Ok(Some(cached_secret)) = self.cache.get::<SecretDto>(&cache_key).await {
+            return Ok(cached_secret);
+        }
+
+        let secret = self
+            .db
             .read_secret(hashed_topic_name, hashed_name)
             .await
             .map_err(|err| match err {
                 DatabaseError::Duplicate => SecretError::SecretCorrupted,
                 _ => SecretError::Database(err),
             })?
-            .ok_or(SecretError::NotFound)
+            .ok_or(SecretError::NotFound)?;
+
+        self.set_in_cache(&cache_key, &secret).await?;
+
+        Ok(secret)
+    }
+
+    async fn set_in_cache(&self, cache_key: &str, secret: &SecretDto) -> Result<(), SecretError> {
+        if let Err(err) = self.cache.set(cache_key, &secret).await {
+            tracing::warn!("Failed to cache secret {}: {}", secret.hashed_name, err);
+        }
+
+        Ok(())
+    }
+
+    async fn delete_from_cache(&self, cache_key: &str) -> Result<(), SecretError> {
+        if let Err(err) = self.cache.delete(cache_key).await {
+            tracing::warn!("Failed to delete secret from cache {}: {}", cache_key, err);
+        }
+
+        Ok(())
+    }
+
+    fn get_cache_key(hashed_topic_name: &str, hashed_secret_name: &str) -> String {
+        format!("secret:{}:{}", hashed_topic_name, hashed_secret_name)
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SecretDto {
     pub hashed_name: String,
     pub encrypted_name: String,

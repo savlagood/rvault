@@ -12,6 +12,7 @@ Secure proxy service that handles encryption and access control between users an
 - JWT-based auth with refresh tokens
 - OpenAPI documentation
 - MongoDB support (additional databases planned)
+- Redis caching with graceful degradation
 
 ## Getting Started
 
@@ -28,6 +29,7 @@ docker-compose up -d
 - **Topics**: Containers for secrets, support none/generate/provided encryption
 - **Secrets**: Versioned items with none/generate/provided encryption modes
 - **Auth**: Root token -> admin tokens -> user tokens with policies
+- **Cache**: Redis-based caching for frequently accessed data with automatic fallback to MongoDB
 
 ## API Usage
 
@@ -60,23 +62,30 @@ Full API docs in `/docs/openapi.yml`
 | RVAULT_DEFAULT_SECRET_KEY | Default secret encryption key |
 | RVAULT_DB_TYPE | Database type (mongodb) |
 | RVAULT_MONGO_DB_NAME | MongoDB database name |
-| RVAULT_MONGO_CONNECTION_STRING | MongoDB connection string |
+| RVAULT_MONGO_URI | MongoDB connection string |
+| RVAULT_REDIS_URI | Redis connection string |
 
 ## Development
 
 ### Requirements:
 - Rust 1.86+
 - MongoDB
+- Redis
 - Docker & Docker Compose (optional)
 
 ### Testing
 ```bash
-cargo test
+make test
 ```
 
 ### Build
 ```bash
-cargo build --release
+make build-release
+```
+
+### Run
+```bash
+make run-release
 ```
 
 ## API Documentation

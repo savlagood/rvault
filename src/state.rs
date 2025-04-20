@@ -1,4 +1,4 @@
-use crate::{config::Config, database::DbConn, storage::Storage};
+use crate::{cache::RedisCache, config::Config, database::DbConn, storage::Storage};
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -26,6 +26,10 @@ impl AppState {
 
         let db_conn = Arc::new(connection);
 
+        let cache = RedisCache::new(&config.redis_uri, config.cache_ttl)
+            .await
+            .context("Failed to create connection with redis")?;
+
         let storage = Storage::setup(db_conn.clone())
             .await
             .expect("Failed to initialize storage");
@@ -34,6 +38,7 @@ impl AppState {
             config: Arc::new(config),
             db_conn,
             storage: Arc::new(RwLock::new(storage)),
+            cache: Arc::new(cache),
         });
 
         Ok(Self(state_data))
@@ -45,6 +50,10 @@ impl AppState {
 
     pub fn get_db_conn(&self) -> Arc<DbConn> {
         self.0.db_conn.clone()
+    }
+
+    pub fn get_cache(&self) -> Arc<RedisCache> {
+        self.0.cache.clone()
     }
 
     pub async fn get_storage_read(&self) -> RwLockReadGuard<'_, Storage> {
@@ -66,4 +75,5 @@ struct StateData {
     config: Arc<Config>,
     db_conn: Arc<DbConn>,
     storage: Arc<RwLock<Storage>>,
+    cache: Arc<RedisCache>,
 }

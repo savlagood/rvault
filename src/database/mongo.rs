@@ -19,7 +19,7 @@ const TOPICS_COLLECTION_NAME: &str = "topics";
 const SECRETS_COLLECTION_NAME: &str = "secrets";
 
 // env
-const ENV_CONNECTION_STRING: &str = "RVAULT_MONGO_CONNECTION_STRING";
+const ENV_MONGO_URI: &str = "RVAULT_MONGO_URI";
 const ENV_DB_NAME: &str = "RVAULT_MONGO_DB_NAME";
 
 #[cfg(test)]
@@ -54,7 +54,7 @@ pub struct MongoFactory {
 
 impl MongoFactory {
     pub fn new() -> Result<Self, DatabaseError> {
-        let uri = get_env_var_required(ENV_CONNECTION_STRING)?;
+        let uri = get_env_var_required(ENV_MONGO_URI)?;
         let db_name = get_env_var_required(ENV_DB_NAME)?;
 
         let factory = Self { uri, db_name };

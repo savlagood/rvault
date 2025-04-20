@@ -9,6 +9,7 @@ const ENV_AUTH_SECRET: &str = "RVAULT_AUTH_SECRET";
 const ENV_DEFAULT_TOPIC_KEY: &str = "RVAULT_DEFAULT_TOPIC_KEY";
 const ENV_DEFAULT_SECRET_KEY: &str = "RVAULT_DEFAULT_SECRET_KEY";
 const ENV_DB_TYPE: &str = "RVAULT_DB_TYPE";
+const ENV_REDIS_URI: &str = "RVAULT_REDIS_URI";
 
 fn check_directory_existence(path: &Path) -> Result<()> {
     if !path.exists() {
@@ -24,6 +25,7 @@ struct YamlConfigData {
     request_timeout_ms: Option<u64>,
     access_token_ttl_seconds: Option<u64>,
     refresh_token_ttl_seconds: Option<u64>,
+    cache_ttl_seconds: Option<u64>,
 }
 
 impl YamlConfigData {
@@ -33,6 +35,7 @@ impl YamlConfigData {
             request_timeout_ms: Some(3000),
             access_token_ttl_seconds: Some(24 * 3600),
             refresh_token_ttl_seconds: Some(7 * 24 * 3600),
+            cache_ttl_seconds: Some(3600),
         }
     }
 
@@ -87,6 +90,7 @@ struct EnvConfigData {
     default_topic_key: String,
     default_secret_key: String,
     db_type: String,
+    redis_uri: String,
 }
 
 impl EnvConfigData {
@@ -97,6 +101,7 @@ impl EnvConfigData {
             default_topic_key: get_env_var_required(ENV_DEFAULT_TOPIC_KEY)?,
             default_secret_key: get_env_var_required(ENV_DEFAULT_SECRET_KEY)?,
             db_type: get_env_var_required(ENV_DB_TYPE)?,
+            redis_uri: get_env_var_required(ENV_REDIS_URI)?,
         })
     }
 }
@@ -107,12 +112,14 @@ pub struct Config {
     pub request_timeout: Duration,
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
+    pub cache_ttl: Duration,
 
     pub root_token: String,
     pub jwt_secret: String,
     pub default_topic_key: String,
     pub default_secret_key: String,
     pub db_type: String,
+    pub redis_uri: String,
 }
 
 impl Config {
@@ -149,12 +156,18 @@ impl Config {
                     .refresh_token_ttl_seconds
                     .context(required("refresh_token_ttl_seconds"))?,
             ),
+            cache_ttl: Duration::from_secs(
+                yaml_config
+                    .cache_ttl_seconds
+                    .context(required("cache_ttl_seconds"))?,
+            ),
 
             root_token: env_config.root_token,
             jwt_secret: env_config.jwt_secret,
             default_topic_key: env_config.default_topic_key,
             default_secret_key: env_config.default_secret_key,
             db_type: env_config.db_type,
+            redis_uri: env_config.redis_uri,
         };
 
         Ok(config)

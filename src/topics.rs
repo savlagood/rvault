@@ -1,4 +1,5 @@
 use crate::{
+    cache::RedisCache,
     database::{DatabaseError, DbConn},
     models::StorageAndTopicKeys,
     storage::StorageError,
@@ -52,25 +53,38 @@ fn decrypt_value(cipher: &Aes256Cipher, encrypted_value: String) -> Result<Strin
 
 pub struct TopicDao {
     db: Arc<DbConn>,
+    cache: Arc<RedisCache>,
 }
 
 impl TopicDao {
-    pub fn new(db: Arc<DbConn>) -> Self {
-        Self { db }
+    pub fn new(db: Arc<DbConn>, cache: Arc<RedisCache>) -> Self {
+        Self { db, cache }
     }
 
     pub async fn create(&self, topic: TopicDto) -> Result<(), TopicError> {
-        self.db.create_topic(topic).await.map_err(|err| match err {
-            DatabaseError::AlreadyExists => TopicError::AlreadyExists,
-            _ => TopicError::Database(err),
-        })
+        self.db
+            .create_topic(topic.clone())
+            .await
+            .map_err(|err| match err {
+                DatabaseError::AlreadyExists => TopicError::AlreadyExists,
+                _ => TopicError::Database(err),
+            })?;
+
+        let cache_key = Self::get_cache_key(&topic.hashed_name);
+        self.set_in_cache(&cache_key, &topic).await
     }
 
     pub async fn update(&self, topic: TopicDto) -> Result<(), TopicError> {
-        self.db.update_topic(&topic).await.map_err(|err| match err {
-            DatabaseError::NotFound => TopicError::NotFound,
-            _ => TopicError::Database(err),
-        })
+        self.db
+            .update_topic(&topic)
+            .await
+            .map_err(|err| match err {
+                DatabaseError::NotFound => TopicError::NotFound,
+                _ => TopicError::Database(err),
+            })?;
+
+        let cache_key = Self::get_cache_key(&topic.hashed_name);
+        self.set_in_cache(&cache_key, &topic).await
     }
 
     pub async fn delete(&self, hashed_name: &str) -> Result<(), TopicError> {
@@ -80,7 +94,10 @@ impl TopicDao {
             .map_err(|err| match err {
                 DatabaseError::NotFound => TopicError::NotFound,
                 _ => TopicError::Database(err),
-            })
+            })?;
+
+        let cache_key = Self::get_cache_key(hashed_name);
+        self.delete_in_cache(&cache_key).await
     }
 
     pub async fn fetch_topic_names(
@@ -107,14 +124,45 @@ impl TopicDao {
     }
 
     async fn find_by_hashed_name(&self, hashed_name: &str) -> Result<TopicDto, TopicError> {
-        self.db
+        let cache_key = Self::get_cache_key(hashed_name);
+
+        if let Ok(Some(cached_topic)) = self.cache.get::<TopicDto>(&cache_key).await {
+            return Ok(cached_topic);
+        }
+
+        let topic = self
+            .db
             .read_topic(hashed_name)
             .await
             .map_err(|err| match err {
                 DatabaseError::Duplicate => TopicError::TopicCorrupted,
                 _ => TopicError::Database(err),
             })?
-            .ok_or(TopicError::NotFound)
+            .ok_or(TopicError::NotFound)?;
+
+        self.set_in_cache(&cache_key, &topic).await?;
+
+        Ok(topic)
+    }
+
+    async fn set_in_cache(&self, cache_key: &str, topic: &TopicDto) -> Result<(), TopicError> {
+        if let Err(err) = self.cache.set(cache_key, &topic).await {
+            tracing::warn!("Failed to set cache topic {}: {}", cache_key, err);
+        }
+
+        Ok(())
+    }
+
+    async fn delete_in_cache(&self, cache_key: &str) -> Result<(), TopicError> {
+        if let Err(err) = self.cache.delete(cache_key).await {
+            tracing::warn!("Failed to delete cache topic {}: {}", cache_key, err);
+        }
+
+        Ok(())
+    }
+
+    fn get_cache_key(hashed_topic_name: &str) -> String {
+        format!("topic:{}", hashed_topic_name)
     }
 }
 

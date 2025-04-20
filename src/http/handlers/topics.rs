@@ -54,7 +54,8 @@ impl TopicContext {
         };
 
         let db = state.get_db_conn();
-        let topic_dao = TopicDao::new(db);
+        let cache = state.get_cache();
+        let topic_dao = TopicDao::new(db, cache);
 
         Ok(Self {
             storage_key,
@@ -111,7 +112,9 @@ async fn get_topic_names_handler(
     let storage_key = storage.get_encryption_key()?;
 
     let db = state.get_db_conn();
-    let topic_names = topics::TopicDao::new(db)
+    let cache = state.get_cache();
+
+    let topic_names = topics::TopicDao::new(db, cache)
         .fetch_topic_names(storage_key)
         .await?;
 
@@ -155,11 +158,12 @@ async fn delete_topic_handler(
     topic.check_integrity(&context.topic_keyset())?;
 
     let db = state.get_db_conn();
-    let secret_dao = SecretDao::new(db);
+    let cache = state.get_cache();
+    let secret_dao = SecretDao::new(db, cache);
 
     for secret_hashed_name in &topic.secret_hashed_names {
         secret_dao
-            .delete(&topic.hashed_name, &secret_hashed_name)
+            .delete(&topic.hashed_name, secret_hashed_name)
             .await?;
     }
 

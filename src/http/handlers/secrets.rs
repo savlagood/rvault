@@ -79,8 +79,10 @@ impl SecretContext {
         };
 
         let db = state.get_db_conn();
-        let topic_dao = TopicDao::new(db.clone());
-        let secret_dao = SecretDao::new(db);
+        let cache = state.get_cache();
+
+        let topic_dao = TopicDao::new(db.clone(), cache.clone());
+        let secret_dao = SecretDao::new(db, cache);
 
         Ok(Self {
             storage_key,
