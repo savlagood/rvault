@@ -140,6 +140,7 @@ mod http {
         TypedHeader,
     };
     use jsonwebtoken::DecodingKey;
+    use tracing::{debug, info, warn};
 
     #[async_trait]
     impl<S> FromRequestParts<S> for AccessTokenClaims
@@ -149,18 +150,31 @@ mod http {
         type Rejection = ResponseError;
 
         async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+            debug!("Extracting access token from request");
+
             let TypedHeader(Authorization(bearer)) = parts
                 .extract::<TypedHeader<Authorization<Bearer>>>()
                 .await
-                .map_err(|_| TokenError::InvalidToken)?;
+                .map_err(|err| {
+                    warn!(error = ?err, "Failed to extract bearer token");
+                    TokenError::InvalidToken
+                })?;
 
             let config = state.as_ref().get_config();
 
             let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
             let token_data =
                 decode_token_into_claims::<AccessTokenClaims>(bearer.token(), &decoding_key)
-                    .map_err(|_| TokenError::InvalidToken)?;
+                    .map_err(|err| {
+                        warn!(error = ?err, "Invalid access token");
+                        TokenError::InvalidToken
+                    })?;
 
+            info!(
+                token_type = ?token_data.claims.token_type,
+                token_id = ?token_data.claims.id,
+                "Access token successfully extracted and validated"
+            );
             Ok(token_data.claims)
         }
     }

@@ -1,4 +1,11 @@
-use crate::{http::handlers, state::AppState};
+use crate::{
+    http::{
+        handlers,
+        headers::{X_RVAULT_SECRET_KEY, X_RVAULT_TOPIC_KEY},
+        tracing::RvaultMakeSpan,
+    },
+    state::AppState,
+};
 use anyhow::{Context, Result};
 use axum::{http::header::AUTHORIZATION, Router};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -47,10 +54,15 @@ pub fn create_router(app_state: AppState) -> Router {
                 ),
         )
         .layer((
-            SetSensitiveHeadersLayer::new([AUTHORIZATION]),
+            SetSensitiveHeadersLayer::new([
+                AUTHORIZATION,
+                X_RVAULT_TOPIC_KEY.clone(),
+                X_RVAULT_SECRET_KEY.clone(),
+            ]),
             CompressionLayer::new(),
             trace::TraceLayer::new_for_http()
-                .make_span_with(trace::DefaultMakeSpan::new().include_headers(true))
+                .make_span_with(RvaultMakeSpan)
+                // .make_span_with(trace::DefaultMakeSpan::new().include_headers(true))
                 .on_request(trace::DefaultOnRequest::new().level(tracing::Level::INFO))
                 .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO))
                 .on_failure(()),

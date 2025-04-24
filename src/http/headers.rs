@@ -1,7 +1,7 @@
 use axum_extra::headers::{Error, Header, HeaderName, HeaderValue};
 
-static X_RVAULT_TOPIC_KEY: HeaderName = HeaderName::from_static("x-rvault-topic-key");
-static X_RVAULT_SECRET_KEY: HeaderName = HeaderName::from_static("x-rvault-secret-key");
+pub static X_RVAULT_TOPIC_KEY: HeaderName = HeaderName::from_static("x-rvault-topic-key");
+pub static X_RVAULT_SECRET_KEY: HeaderName = HeaderName::from_static("x-rvault-secret-key");
 
 pub struct TopicKeyHeader {
     pub value: Option<String>,

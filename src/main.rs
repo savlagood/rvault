@@ -2,6 +2,7 @@ mod cache;
 mod config;
 mod database;
 mod http;
+mod logging;
 mod models;
 mod policies;
 mod secrets;
@@ -18,7 +19,7 @@ mod api_tests;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv::from_filename(".env").context("Failed to load values from .env file")?;
-    tracing_subscriber::fmt::init();
+    logging::init()?;
 
     let app_state = state::AppState::setup()
         .await

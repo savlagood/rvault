@@ -15,7 +15,10 @@ use crate::{
     secrets::{SecretDao, SecretDto, SecretError},
     state::AppState,
     topics::TopicDao,
-    utils::{common::generate_external_key, hkdf, validators},
+    utils::{
+        common::{generate_external_key, hash_string_base64},
+        hkdf, validators,
+    },
 };
 use axum::{
     extract::{Path, State},
@@ -24,6 +27,7 @@ use axum::{
     Json, Router,
 };
 use axum_extra::TypedHeader;
+use tracing::{error, info, warn};
 
 enum SecretOperation {
     Names,
@@ -158,6 +162,8 @@ async fn get_secret_names_handler(
     Path(topic_name): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<SecretNames>, ResponseError> {
+    info!("Secret names list requested");
+
     validate_request(&claims, &state, &topic_name, None, SecretOperation::Names).await?;
 
     let external_topic_key = topic_key_header.value;
@@ -167,14 +173,31 @@ async fn get_secret_names_handler(
     let topic = context.topic_dao.find_by_name(&topic_name).await?;
     topic.check_integrity(&context.topic_keyset())?;
 
-    let secret_names = context
+    match context
         .secret_dao
         .fetch_secret_names(&topic.hashed_name, &context.storage_key)
-        .await?;
+        .await
+    {
+        Ok(secret_names) => {
+            info!(
+                hashed_topic_name = %topic.hashed_name.clone(),
+                total_secrets = %secret_names.len(),
+                "Secret names list fetched successfully"
+            );
 
-    Ok(Json(SecretNames {
-        names: secret_names,
-    }))
+            Ok(Json(SecretNames {
+                names: secret_names,
+            }))
+        }
+        Err(err) => {
+            error!(
+                hashed_topic_name = %topic.hashed_name.clone(),
+                error = ?err,
+                "Failed to fetch secret names"
+            );
+            Err(err.into())
+        }
+    }
 }
 
 async fn create_secret_handler(
@@ -184,6 +207,8 @@ async fn create_secret_handler(
     State(state): State<AppState>,
     Json(secret_settings): Json<SecretSettings>,
 ) -> Result<(StatusCode, Json<SecretEncryptionKey>), ResponseError> {
+    info!("Secret creation requested");
+
     validate_request(
         &claims,
         &state,
@@ -201,21 +226,61 @@ async fn create_secret_handler(
     let mut topic = context.topic_dao.find_by_name(&topic_name).await?;
     topic.check_integrity(&context.topic_keyset())?;
 
-    let secret = SecretDto::new(
+    let secret = match SecretDto::new(
         secret_name,
         secret_settings.value,
         topic.hashed_name.clone(),
         &context.secret_keyset(),
-    )?;
+    ) {
+        Ok(secret) => secret,
+        Err(err) => {
+            error!(
+                hashed_topic_name = %topic.hashed_name,
+                error = ?err,
+                "Failed to create secret"
+            );
+            return Err(err.into());
+        }
+    };
 
     if topic.is_contains_secret(&secret.hashed_name) {
+        warn!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %secret.hashed_name,
+            "Attempted to create already existing secret"
+        );
         return Err(ResponseError::Secret(SecretError::AlreadyExists));
     }
 
     topic.add_hashed_secret_name(secret.hashed_name.clone(), &context.topic_keyset())?;
 
-    context.secret_dao.create(secret).await?;
-    context.topic_dao.update(topic).await?;
+    let hashed_topic_name = topic.hashed_name.clone();
+    let hashed_secret_name = secret.hashed_name.clone();
+
+    if let Err(err) = context.secret_dao.create(secret).await {
+        error!(
+            hashed_topic_name = %hashed_topic_name,
+            hashed_secret_name = %hashed_secret_name,
+            error = ?err,
+            "Failed to create secret in database",
+        );
+        return Err(err.into());
+    }
+    if let Err(err) = context.topic_dao.update(topic).await {
+        error!(
+            hashed_topic_name = %hashed_topic_name,
+            hashed_secret_name = %hashed_secret_name,
+            error = ?err,
+            "Failed to update topic after secret creation",
+        );
+        return Err(err.into());
+    }
+
+    info!(
+        hashed_topic_name = %hashed_topic_name,
+        hashed_secret_name = %hashed_secret_name,
+        "Secret created successfully"
+    );
 
     Ok((
         StatusCode::CREATED,
@@ -232,6 +297,8 @@ async fn read_secret_handler(
     Path((topic_name, secret_name)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<Json<SecretValue>, ResponseError> {
+    info!("Secret read requested");
+
     validate_request(
         &claims,
         &state,
@@ -247,20 +314,43 @@ async fn read_secret_handler(
     let topic = context.topic_dao.find_by_name(&topic_name).await?;
     topic.check_integrity(&context.topic_keyset())?;
 
+    let hashed_secret_name = hash_string_base64(&secret_name);
+
     if !topic.contains_secret_name(&secret_name) {
+        warn!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            "Attempt to read non-existent secret"
+        );
         return Err(ResponseError::Secret(SecretError::NotFound));
     }
 
-    let secret = context
+    match context
         .secret_dao
-        .find_by_name(&topic.hashed_name, &secret_name)
-        .await?;
-    secret.check_integrity(&context.secret_keyset())?;
-
-    Ok(Json(SecretValue {
-        value: secret.get_current_secret_value(&context.secret_keyset())?,
-        version: secret.cursor,
-    }))
+        .find_by_hashed_name(&topic.hashed_name, &hashed_secret_name)
+        .await
+    {
+        Ok(secret) => {
+            info!(
+                hashed_topic_name = %topic.hashed_name,
+                hashed_secret_name = %hashed_secret_name,
+                "Secret read successfully"
+            );
+            Ok(Json(SecretValue {
+                value: secret.get_current_secret_value(&context.secret_keyset())?,
+                version: secret.cursor,
+            }))
+        }
+        Err(err) => {
+            error!(
+                hashed_topic_name = %topic.hashed_name,
+                hashed_secret_name = %hashed_secret_name,
+                error = ?err,
+                "Failed to get secret value"
+            );
+            Err(err.into())
+        }
+    }
 }
 
 async fn update_secret_handler(
@@ -271,6 +361,8 @@ async fn update_secret_handler(
     State(state): State<AppState>,
     Json(update_request): Json<SecretUpdateRequest>,
 ) -> Result<StatusCode, ResponseError> {
+    info!("Secret update requested");
+
     validate_request(
         &claims,
         &state,
@@ -286,7 +378,14 @@ async fn update_secret_handler(
     let topic = context.topic_dao.find_by_name(&topic_name).await?;
     topic.check_integrity(&context.topic_keyset())?;
 
+    let hashed_secret_name = hash_string_base64(&secret_name);
+
     if !topic.contains_secret_name(&secret_name) {
+        warn!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            "Attempted to update non-existent secret"
+        );
         return Err(ResponseError::Secret(SecretError::NotFound));
     }
 
@@ -296,8 +395,31 @@ async fn update_secret_handler(
         .await?;
     secret.check_integrity(&context.secret_keyset())?;
 
-    secret.update_secret_value(update_request.value, &context.secret_keyset())?;
-    context.secret_dao.update(&secret).await?;
+    if let Err(err) = secret.update_secret_value(update_request.value, &context.secret_keyset()) {
+        error!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            error = ?err,
+            "Failed to update secret value"
+        );
+        return Err(err.into());
+    }
+
+    if let Err(err) = context.secret_dao.update(&secret).await {
+        error!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            error = ?err,
+            "Failed to save updated secret"
+        );
+        return Err(err.into());
+    }
+
+    info!(
+        hashed_topic_name = %topic.hashed_name,
+        hashed_secret_name = %hashed_secret_name,
+        "Secret updated successfully"
+    );
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -309,6 +431,8 @@ async fn delete_secret_handler(
     Path((topic_name, secret_name)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<StatusCode, ResponseError> {
+    info!("Secret deletion requested");
+
     validate_request(
         &claims,
         &state,
@@ -324,7 +448,14 @@ async fn delete_secret_handler(
     let mut topic = context.topic_dao.find_by_name(&topic_name).await?;
     topic.check_integrity(&context.topic_keyset())?;
 
+    let hashed_secret_name = hash_string_base64(&secret_name);
+
     if !topic.contains_secret_name(&secret_name) {
+        warn!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            "Attempted to delete non-existent secret"
+        );
         return Err(ResponseError::Secret(SecretError::NotFound));
     }
 
@@ -334,13 +465,38 @@ async fn delete_secret_handler(
         .await?;
     secret.check_integrity(&context.secret_keyset())?;
 
-    context
+    if let Err(err) = context
         .secret_dao
         .delete(&topic.hashed_name, &secret.hashed_name)
-        .await?;
+        .await
+    {
+        error!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            error = ?err,
+            "Failed to delete secret"
+        );
+        return Err(err.into());
+    }
 
     topic.remove_hashed_secret_name(secret.hashed_name, &context.topic_keyset())?;
-    context.topic_dao.update(topic).await?;
+
+    let hashed_topic_name = topic.hashed_name.clone();
+    if let Err(err) = context.topic_dao.update(topic).await {
+        error!(
+            hashed_topic_name = %hashed_topic_name,
+            hashed_secret_name = %hashed_secret_name,
+            error = ?err,
+            "Failed to delete secret"
+        );
+        return Err(err.into());
+    }
+
+    info!(
+        hashed_topic_name = %hashed_topic_name,
+        hashed_secret_name = %hashed_secret_name,
+        "Secret deleted successfully"
+    );
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -352,6 +508,8 @@ async fn get_secret_versions_handler(
     Path((topic_name, secret_name)): Path<(String, String)>,
     State(state): State<AppState>,
 ) -> Result<Json<SecretVersions>, ResponseError> {
+    info!("Secret versions requested");
+
     validate_request(
         &claims,
         &state,
@@ -367,7 +525,14 @@ async fn get_secret_versions_handler(
     let topic = context.topic_dao.find_by_name(&topic_name).await?;
     topic.check_integrity(&context.topic_keyset())?;
 
+    let hashed_secret_name = hash_string_base64(&secret_name);
+
     if !topic.contains_secret_name(&secret_name) {
+        warn!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            "Attempted to get versions of non-existent secret"
+        );
         return Err(ResponseError::Secret(SecretError::NotFound));
     }
 
@@ -379,7 +544,7 @@ async fn get_secret_versions_handler(
 
     let keyset = context.secret_keyset();
 
-    let versions = secret
+    let versions = match secret
         .versions
         .into_iter()
         .enumerate()
@@ -389,7 +554,25 @@ async fn get_secret_versions_handler(
                 version: i,
             })
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(versions) => versions,
+        Err(err) => {
+            error!(
+                hashed_topic_name = %topic.hashed_name,
+                hashed_secret_name = %hashed_secret_name,
+                error = %err,
+                "Failed to decrypt secret values"
+            );
+            return Err(err.into());
+        }
+    };
+
+    info!(
+        hashed_topic_name = %topic.hashed_name,
+        hashed_secret_name = %hashed_secret_name,
+        "Secret versions fetched successfully"
+    );
 
     Ok(Json(SecretVersions {
         current: secret.cursor,
@@ -405,6 +588,11 @@ async fn update_current_version_handler(
     State(state): State<AppState>,
     Json(current_version): Json<SecretCurrentVersion>,
 ) -> Result<StatusCode, ResponseError> {
+    info!(
+        version = current_version.version,
+        "Secret version update requested"
+    );
+
     validate_request(
         &claims,
         &state,
@@ -420,7 +608,14 @@ async fn update_current_version_handler(
     let topic = context.topic_dao.find_by_name(&topic_name).await?;
     topic.check_integrity(&context.topic_keyset())?;
 
+    let hashed_secret_name = hash_string_base64(&secret_name);
+
     if !topic.contains_secret_name(&secret_name) {
+        warn!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            "Attempted to update version of non-existent secret"
+        );
         return Err(ResponseError::Secret(SecretError::NotFound));
     }
 
@@ -430,8 +625,33 @@ async fn update_current_version_handler(
         .await?;
     secret.check_integrity(&context.secret_keyset())?;
 
-    secret.update_current_version(current_version.version, &context.secret_keyset())?;
-    context.secret_dao.update(&secret).await?;
+    if let Err(err) =
+        secret.update_current_version(current_version.version, &context.secret_keyset())
+    {
+        error!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            error = ?err,
+            "Failed to update secret version"
+        );
+        return Err(err.into());
+    }
+
+    if let Err(err) = context.secret_dao.update(&secret).await {
+        error!(
+            hashed_topic_name = %topic.hashed_name,
+            hashed_secret_name = %hashed_secret_name,
+            error = ?err,
+            "Failed to save secret with updated version"
+        );
+        return Err(err.into());
+    }
+
+    info!(
+        hashed_topic_name = %topic.hashed_name,
+        hashed_secret_name = %hashed_secret_name,
+        "Secret version updated successfully"
+    );
 
     Ok(StatusCode::NO_CONTENT)
 }

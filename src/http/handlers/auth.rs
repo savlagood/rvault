@@ -13,6 +13,7 @@ use crate::{
 };
 use axum::{extract::State, routing::post, Json, Router};
 use jsonwebtoken::DecodingKey;
+use tracing::{debug, info, warn};
 
 pub fn create_router(app_state: AppState) -> Router {
     Router::new()
@@ -26,17 +27,28 @@ async fn issue_admin_token(
     State(state): State<AppState>,
     Json(payload): Json<TokenRequest>,
 ) -> Result<Json<TokenPair>, ResponseError> {
+    info!("Admin token issuance requested");
+
     let config = state.get_config();
     let root_token = config.root_token.as_str();
 
     if payload.token != root_token {
+        warn!("Invalid root token provided in admin token request");
         return Err(ResponseError::AccessDenied);
     }
 
     let policies = get_admin_policies();
-    let response_body = TokenPair::new(config, policies, TokenType::Admin)?;
 
-    Ok(Json(response_body))
+    match TokenPair::new(config, policies, TokenType::Admin) {
+        Ok(token_pair) => {
+            info!("Admin token pair successfully issued");
+            Ok(Json(token_pair))
+        }
+        Err(err) => {
+            warn!(error = ?err, "Failed to issue admin token pair");
+            Err(err.into())
+        }
+    }
 }
 
 async fn issue_user_token(
@@ -44,7 +56,13 @@ async fn issue_user_token(
     State(state): State<AppState>,
     Json(mut policies): Json<Policies>,
 ) -> Result<Json<TokenPair>, ResponseError> {
+    info!("User token issuance requested");
+
     if !matches!(claims.token_type, TokenType::Admin) {
+        warn!(
+            issuer_type = ?claims.token_type,
+            "Non-admin user attempted to issue user token"
+        );
         return Err(ResponseError::AccessDenied);
     }
 
@@ -54,31 +72,66 @@ async fn issue_user_token(
     let default_secret = default_topic.get_default_secret();
 
     if !default_topic.permissions.is_empty() || !default_secret.is_empty() {
+        warn!("Attempt to set default permissions in user token");
         return Err(ResponseError::CannotSetDefaultFields);
     }
 
     let config = state.get_config();
-    Ok(Json(TokenPair::new(config, policies, TokenType::User)?))
+    match TokenPair::new(config, policies, TokenType::User) {
+        Ok(token_pair) => {
+            info!("User token pair successfully issued");
+            Ok(Json(token_pair))
+        }
+        Err(err) => {
+            warn!(error = ?err, "Failed to issue user token pair");
+            Err(err.into())
+        }
+    }
 }
 
 async fn refresh_token(
     State(state): State<AppState>,
     Json(token_pair): Json<TokenPair>,
 ) -> Result<Json<TokenPair>, ResponseError> {
+    info!("Token refresh requested");
+
     let config = state.get_config();
     let decoding_key = DecodingKey::from_secret(config.jwt_secret.as_bytes());
 
-    let refresh_token_claims =
-        decode_token_into_claims::<RefreshTokenClaims>(&token_pair.refresh_token, &decoding_key)?
-            .claims;
-    let access_token_claims = decode_token_into_claims_without_exp_checking::<AccessTokenClaims>(
+    let refresh_token_claims = match decode_token_into_claims::<RefreshTokenClaims>(
+        &token_pair.refresh_token,
+        &decoding_key,
+    ) {
+        Ok(claims) => {
+            debug!("Refresh token successfully decoded");
+            claims.claims
+        }
+        Err(err) => {
+            warn!(error = ?err, "Failed to decode refresh token");
+            return Err(err.into());
+        }
+    };
+    let access_token_claims = match decode_token_into_claims_without_exp_checking::<AccessTokenClaims>(
         &token_pair.access_token,
         &decoding_key,
-    )?
-    .claims;
+    ) {
+        Ok(claims) => {
+            debug!("Access token successfully decoded");
+            claims.claims
+        }
+        Err(err) => {
+            warn!(error = ?err, "Failed to decode access token");
+            return Err(err.into());
+        }
+    };
 
     // Check ids
     if refresh_token_claims.access_token_id != access_token_claims.id {
+        warn!(
+            refresh_token_id = ?refresh_token_claims.access_token_id,
+            access_token_id = ?access_token_claims.id,
+            "Token IDs mismatch during refresh"
+        );
         return Err(ResponseError::DifferentTokens);
     }
 
@@ -86,7 +139,14 @@ async fn refresh_token(
     let policies = access_token_claims.policies;
     let token_type = access_token_claims.token_type;
 
-    let response_body = TokenPair::new(config, policies, token_type)?;
-
-    Ok(Json(response_body))
+    match TokenPair::new(config, policies, token_type) {
+        Ok(token_pair) => {
+            info!("Token pair successfully refreshed");
+            Ok(Json(token_pair))
+        }
+        Err(err) => {
+            warn!(error = ?err, "Failed to generate new token pair during refresh");
+            Err(err.into())
+        }
+    }
 }

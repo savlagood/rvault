@@ -44,6 +44,10 @@ pub struct SharedKeys {
 }
 
 impl SharedKeys {
+    pub fn count(&self) -> usize {
+        self.shares.len()
+    }
+
     pub fn from_key(key: Vec<u8>, settings: &SharedKeysSettings) -> Result<Self, SharedKeysError> {
         let secret = base64::encode(&key);
         let secret_data = SecretData::with_secret(&secret, settings.threshold);

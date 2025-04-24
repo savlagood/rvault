@@ -7,7 +7,7 @@ use crate::{
     policies::Permission,
     secrets::SecretDao,
     state::AppState,
-    topics::{self, TopicDao, TopicDto},
+    topics::{self, TopicDao, TopicDto, TopicError},
     utils::{common::generate_external_key, hkdf, validators},
 };
 use axum::{
@@ -17,6 +17,7 @@ use axum::{
     Json, Router,
 };
 use axum_extra::TypedHeader;
+use tracing::{error, info, warn};
 
 enum TopicOperation {
     Create,
@@ -103,6 +104,8 @@ async fn get_topic_names_handler(
     claims: AccessTokenClaims,
     State(state): State<AppState>,
 ) -> Result<Json<TopicNames>, ResponseError> {
+    info!("Topic names list requested");
+
     // checks
     validators::is_admin(&claims.token_type)?;
     validators::ensure_storage_is_unsealed(state.clone()).await?;
@@ -114,11 +117,22 @@ async fn get_topic_names_handler(
     let db = state.get_db_conn();
     let cache = state.get_cache();
 
-    let topic_names = topics::TopicDao::new(db, cache)
+    match topics::TopicDao::new(db, cache)
         .fetch_topic_names(storage_key)
-        .await?;
-
-    Ok(Json(TopicNames { names: topic_names }))
+        .await
+    {
+        Ok(topic_names) => {
+            info!(
+                count = topic_names.len(),
+                "Topic names list fetched successfully"
+            );
+            Ok(Json(TopicNames { names: topic_names }))
+        }
+        Err(err) => {
+            error!(error = ?err, "Failed to fetch topic names");
+            Err(err.into())
+        }
+    }
 }
 
 async fn create_topic_handler(
@@ -127,21 +141,51 @@ async fn create_topic_handler(
     State(state): State<AppState>,
     Json(topic_settings): Json<TopicSettings>,
 ) -> Result<(StatusCode, Json<TopicEncryptionKey>), ResponseError> {
+    info!("Topic creation requested");
+
     validate_request(&claims, &state, &topic_name, TopicOperation::Create).await?;
 
     let external_topic_key = generate_external_key(topic_settings.encryption);
-
     let context = TopicContext::new(&state, external_topic_key.clone()).await?;
 
-    let topic = TopicDto::new(topic_name, &context.topic_keyset())?;
-    context.topic_dao.create(topic).await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(TopicEncryptionKey {
-            value: external_topic_key,
-        }),
-    ))
+    match TopicDto::new(topic_name, &context.topic_keyset()) {
+        Ok(topic) => {
+            let hashed_topic_name = topic.hashed_name.clone();
+            match context.topic_dao.create(topic).await {
+                Ok(()) => {
+                    info!(
+                        hashed_topic_name = %hashed_topic_name,
+                        "Topic created successfully"
+                    );
+                    Ok((
+                        StatusCode::CREATED,
+                        Json(TopicEncryptionKey {
+                            value: external_topic_key,
+                        }),
+                    ))
+                }
+                Err(TopicError::AlreadyExists) => {
+                    warn!(
+                        hashed_topic_name = %hashed_topic_name,
+                        "Attempted to create already existing topic"
+                    );
+                    Err(TopicError::AlreadyExists.into())
+                }
+                Err(err) => {
+                    error!(
+                        err = ?err,
+                        hashed_topic_name = %hashed_topic_name,
+                        "Failed to create topic"
+                    );
+                    Err(err.into())
+                }
+            }
+        }
+        Err(err) => {
+            error!(error = ?err, "Failed to create topic DTO");
+            Err(err.into())
+        }
+    }
 }
 
 async fn delete_topic_handler(
@@ -150,24 +194,63 @@ async fn delete_topic_handler(
     Path(topic_name): Path<String>,
     State(state): State<AppState>,
 ) -> Result<StatusCode, ResponseError> {
+    info!("Topic deletion requested");
+
     validate_request(&claims, &state, &topic_name, TopicOperation::Delete).await?;
 
     let context = TopicContext::new(&state, topic_key_header.value).await?;
 
-    let topic = context.topic_dao.find_by_name(&topic_name).await?;
-    topic.check_integrity(&context.topic_keyset())?;
+    match context.topic_dao.find_by_name(&topic_name).await {
+        Ok(topic) => {
+            topic.check_integrity(&context.topic_keyset())?;
 
-    let db = state.get_db_conn();
-    let cache = state.get_cache();
-    let secret_dao = SecretDao::new(db, cache);
+            let db = state.get_db_conn();
+            let cache = state.get_cache();
+            let secret_dao = SecretDao::new(db, cache);
 
-    for secret_hashed_name in &topic.secret_hashed_names {
-        secret_dao
-            .delete(&topic.hashed_name, secret_hashed_name)
-            .await?;
+            for secret_hashed_name in &topic.secret_hashed_names {
+                if let Err(err) = secret_dao
+                    .delete(&topic.hashed_name, secret_hashed_name)
+                    .await
+                {
+                    error!(
+                        error = ?err,
+                        hashed_topic_name = %topic.hashed_name,
+                        secret_hashed_name = secret_hashed_name,
+                        "Failed to delete topic's secret"
+                    );
+                }
+            }
+
+            info!(
+                hashed_topic_name = %topic.hashed_name,
+                "Topic's secrets deleted successfully"
+            );
+
+            match context.topic_dao.delete(&topic.hashed_name).await {
+                Ok(()) => {
+                    info!(
+                        hashed_topic_name = %topic.hashed_name,
+                        "Topic and its secrets deleted successfully"
+                    );
+                    Ok(StatusCode::NO_CONTENT)
+                }
+                Err(err) => {
+                    error!(
+                        error = ?err,
+                        hashed_topic_name = %topic.hashed_name,
+                        "Failed to delete topic"
+                    );
+                    Err(err.into())
+                }
+            }
+        }
+        Err(err) => {
+            error!(
+                error = ?err,
+                "Failed to find topic for deletion"
+            );
+            Err(err.into())
+        }
     }
-
-    context.topic_dao.delete(&topic.hashed_name).await?;
-
-    Ok(StatusCode::NO_CONTENT)
 }
