@@ -2,12 +2,18 @@ use crate::{
     http::{
         handlers,
         headers::{X_RVAULT_SECRET_KEY, X_RVAULT_TOPIC_KEY},
+        middleware::metrics_middleware,
         tracing::RvaultMakeSpan,
     },
     state::AppState,
 };
 use anyhow::{Context, Result};
-use axum::{http::header::AUTHORIZATION, Router};
+use axum::{
+    http::{header::AUTHORIZATION, StatusCode},
+    middleware,
+    routing::get,
+    Router,
+};
 use std::net::{Ipv4Addr, SocketAddr};
 use tokio::net::TcpListener;
 use tower_http::{
@@ -36,6 +42,7 @@ pub fn create_router(app_state: AppState) -> Router {
     let config = app_state.get_config();
 
     Router::new()
+        .route("/metrics", get(metrics_handler))
         .nest(
             "/api",
             Router::new()
@@ -53,6 +60,7 @@ pub fn create_router(app_state: AppState) -> Router {
                     handlers::secrets::create_router(app_state.clone()),
                 ),
         )
+        .route_layer(middleware::from_fn(metrics_middleware))
         .layer((
             SetSensitiveHeadersLayer::new([
                 AUTHORIZATION,
@@ -62,13 +70,17 @@ pub fn create_router(app_state: AppState) -> Router {
             CompressionLayer::new(),
             trace::TraceLayer::new_for_http()
                 .make_span_with(RvaultMakeSpan)
-                // .make_span_with(trace::DefaultMakeSpan::new().include_headers(true))
                 .on_request(trace::DefaultOnRequest::new().level(tracing::Level::INFO))
                 .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO))
                 .on_failure(()),
             TimeoutLayer::new(config.request_timeout),
             CatchPanicLayer::new(),
         ))
+}
+
+async fn metrics_handler() -> (StatusCode, String) {
+    let metrics = crate::metrics::gather_metrics();
+    (StatusCode::OK, metrics)
 }
 
 /// Waits for a shutdown signal (Ctrl+C or terminate signal) to gracefully terminate the server.

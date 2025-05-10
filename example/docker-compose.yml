@@ -1,0 +1,85 @@
+version: "3.8"
+
+services:
+  rvault:
+    container_name: storage-rvault
+    image: rvault:0.0.1
+    ports:
+      - 9200:9200
+    environment:
+      - RVAULT_ROOT_TOKEN=${RVAULT_ROOT_TOKEN}
+      - RVAULT_AUTH_SECRET=${RVAULT_AUTH_SECRET}
+      - RVAULT_DEFAULT_TOPIC_KEY=${RVAULT_DEFAULT_TOPIC_KEY}
+      - RVAULT_DEFAULT_SECRET_KEY=${RVAULT_DEFAULT_SECRET_KEY}
+      - RVAULT_DB_TYPE=mongodb
+      - RVAULT_MONGO_DB_NAME=rvault
+      - RVAULT_MONGO_URI=mongodb://mongodb:27017
+      - RVAULT_REDIS_URI=redis://redis:6379
+    volumes:
+      - ./rvault_data:/opt/rvault/data
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - rvault_net
+
+  mongodb:
+    container_name: mongodb-rvault
+    image: mongo:latest
+    restart: always
+    ports:
+      - "27017:27017"
+    networks:
+      - rvault_net
+
+  redis:
+    container_name: redis-rvault
+    image: redis:latest
+    restart: always
+    environment:
+      - REDIS_PASSWORD=simple_redis_password
+    ports:
+      - "6379:6379"
+    networks:
+      - rvault_net
+
+  prometheus:
+    container_name: prometheus-rvault
+    image: prom/prometheus:latest
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    networks:
+      - rvault_net
+
+  grafana:
+    container_name: grafana-rvault
+    image: grafana/grafana:latest
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    networks:
+      - rvault_net
+
+networks:
+  rvault_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24

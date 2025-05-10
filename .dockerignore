@@ -10,3 +10,4 @@ docs/
 .env.test
 rvault_data/
 .vscode/
+example/

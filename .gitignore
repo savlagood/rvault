@@ -1,5 +1,7 @@
 /target
 /rvault_data
+example/mongodb
+example/redis
 .vscode
 
 .env
