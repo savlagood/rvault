@@ -13,12 +13,18 @@ Secure proxy service that handles encryption and access control between users an
 - OpenAPI documentation
 - MongoDB support (additional databases planned)
 - Redis caching with graceful degradation
+- Prometheus metrics for monitoring
 
 ## Getting Started
 
 1. Clone repo
-2. Create `.env` file from `.env.sample`
-3. Run with Docker:
+2. Build docker image of rvault
+```bash
+docker build -t rvault:0.0.1 .
+```
+2. Go to `example/` directory
+3. Create `.env` file from `.env.sample`
+4. Run with Docker:
 ```bash
 docker-compose up -d
 ```
@@ -30,26 +36,11 @@ docker-compose up -d
 - **Secrets**: Versioned items with none/generate/provided encryption modes
 - **Auth**: Root token -> admin tokens -> user tokens with policies
 - **Cache**: Redis-based caching for frequently accessed data with automatic fallback to MongoDB
+- **Monitoring**: Prometheus metrics endpoint for system health tracking
 
-## API Usage
+## API Documentation
 
-```bash
-# Get admin token
-curl -X POST http://localhost:9200/api/auth/token/issue/admin \
-  -d '{"token":"ROOT_TOKEN"}'
-
-# Initialize storage
-curl -X POST http://localhost:9200/api/storage/init \
-  -H "Authorization: Bearer ADMIN_TOKEN" \
-  -d '{"threshold": 3, "total_keys": 5}'
-
-# Unseal storage
-curl -X POST http://localhost:9200/api/storage/unseal \
-  -H "Authorization: Bearer ADMIN_TOKEN" \
-  -d '{"shares":["key1","key2","key3"]}'
-```
-
-Full API docs in `/docs/openapi.yml`
+OpenAPI spec available at `/docs/openapi.yml`
 
 ## Environment Variables
 
@@ -78,16 +69,29 @@ Full API docs in `/docs/openapi.yml`
 make test
 ```
 
+#### Verbose testing
+```bash
+make test-verbose
+```
+
 ### Build
+#### Debug
+```bash
+make build-debug
+```
+
+#### Release
 ```bash
 make build-release
 ```
 
 ### Run
+#### Debug
+```bash
+make run-debug
+```
+
+#### Release
 ```bash
 make run-release
 ```
-
-## API Documentation
-
-OpenAPI spec available at `/docs/openapi.yml`
